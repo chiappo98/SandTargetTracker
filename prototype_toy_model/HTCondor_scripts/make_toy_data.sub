@@ -1,0 +1,21 @@
+# Unix submit description file  
+
+executable = /storage/gpfs_data/neutrino/users/alrugger/Software/dchamber_prototype_analysis/HTCondor_scripts/make_toy_data.sh
+
+getenv = True
+
+log = $(ClusterId).$(Process).$(Item).log 
+output = $(ClusterId).$(Process).$(Item).out 
+error = $(ClusterId).$(Process).$(Item).err 
+
+# set path and name to default
+save_path = /storage/gpfs_data/neutrino/users/alrugger/Software/dchamber_prototype_analysis/dataframes/raw
+df_name = newgeo_redu_th0_phi0_10
+# set the number of tracks
+tracks_num = 10
+arguments = $(tracks_num) $(save_path) $(df_name)
+
+should_transfer_files = YES
+when_to_transfer_output = ON_EXIT 
+
+queue 1

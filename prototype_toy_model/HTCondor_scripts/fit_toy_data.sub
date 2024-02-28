@@ -1,0 +1,23 @@
+# Unix submit description file  
+
+executable = /storage/gpfs_data/neutrino/users/alrugger/Software/dchamber_prototype_analysis/HTCondor_scripts/fit_toy_data.sh
+getenv = True
+
+log = $(ClusterId).$(Process).$(Item).log 
+output = $(ClusterId).$(Process).$(Item).out 
+error = $(ClusterId).$(Process).$(Item).err 
+
+# set number of jobs and paths to default values
+n_jobs = 500
+in_path = /storage/gpfs_data/neutrino/users/alrugger/Software/dchamber_prototype_analysis/dataframes/raw/newgeo_redu_th0_phi0_smear4ns_nev100000_data.pkl
+out_path = /storage/gpfs_data/neutrino/users/alrugger/Software/dchamber_prototype_analysis/dataframes/fitted/neve5_ncall4e3_smear4ns
+df_name = nosmr_redu_th0_phi0
+
+# set the number of tracks
+arguments = $(n_jobs) $(Process) $(in_path) $(out_path) $(df_name)
+
+should_transfer_files = YES
+when_to_transfer_output = ON_EXIT
+transfer_input_files = /home/NEUTRINO/aruggeridune/.local/lib/python3.6/site-packages
+
+queue $(n_jobs)
