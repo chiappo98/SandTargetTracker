@@ -2,9 +2,8 @@
 
 TTree* read_data(const char* fname) {
 	
-	//std::string path = "/mnt/c/Users/Pc/OneDrive - Alma Mater Studiorum Universit� di Bologna/PhD/DUNE/SAND/drift_chamber/data";
-	TFile* T = TFile::Open(fname);
-	TTree* tree = T->Get<TTree>("EventsFromDigitizer");
+	TFile* T = TFile::Open(fname); //fname IS THE NAME OF THE ROOT FILE, assumed to be in the same folder of this file
+	TTree* tree = T->Get<TTree>("EventsFromDigitizer"); //MODIFY IF TTREE NAME IS DIFFERENT FROM "EventsFromDigitizer"
 
 	return tree;
 }
