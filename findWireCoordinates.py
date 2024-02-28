@@ -1,6 +1,6 @@
 from matplotlib import pyplot as plt
 import numpy as np
-from waveforms import Tracks
+from hitPreprocessing import Tracks
 
 def compute_distance(dot_x, dot_y, line_x, line_y):
     p1 = np.array([line_x[0], line_y[0]])
@@ -53,7 +53,7 @@ def find_wire(channel, plot=False):
         fig.legend()
         plt.show()    
     
-    return 0#minimumAngle, wirePosition
+    return 0 #minimumAngle, wirePosition
 
 def find_wire_PCA(channel, plotPCA=False, plotProfile=False):
     tracksPCA = Tracks("20240226_STT_runs350_442.root", channel, 0.02e-9) #20240220_STT.root
