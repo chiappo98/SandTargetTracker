@@ -2,15 +2,15 @@
 #include "convertDigitizer.cpp"
 
 void df(int run_number) {
-    std:string abs_path = "/mnt/e/data/drift_chamber/";
+    std:string abs_path = "path/to/data"; //CHANGE
     //ROOT::EnableImplicitMT(); // Tell ROOT you want to go parallel
-    ROOT::RDataFrame df("EvFromDig", "run_60_0x17510000v1751.root"); // Interface to TTree and TChain
-    auto ch0 = df.Histo1D("ch00"); // This happens in parallel!
+    ROOT::RDataFrame df("EvFromDig", "run_60_0x17510000v1751.root"); //CHANGE NAME OF run_XX__0x17510000v1751.root
+    auto ch0 = df.Histo1D("ch00"); //read channel zero
     ch0->Draw();
 }
 
 void convert_files(int run_i, int run_f) {
-    std:string abs_path = "/mnt/e/data/drift_chamber/";
+    std:string abs_path = "path/to/data"; //CHANGE
 
     for (int r = run_i; r <= run_f; r++) {
         std::string binFile1751 = abs_path + "run_" + std::to_string(r) + "_0x17510000v1751.bin";
@@ -27,7 +27,7 @@ void convert_files(int run_i, int run_f) {
 }
 
 void plot_waveforms(int run_i, int run_f) {
-    std:string abs_path = "/mnt/e/data/drift_chamber/";
+    std:string abs_path = "path/to/data"; //CHANGE
 
     TChain chain("EvFromDig");
     for (int r = run_i; r <= run_f; r++) {
@@ -40,10 +40,10 @@ void plot_waveforms(int run_i, int run_f) {
 }
 
 void plot_tracks(std::string ch, std::string dc_charge, std::string pmt_charge) {
-    std:string fname = "/mnt/e/data/drift_chamber/tracks.root";
+    std:string fname = "path/to/file/filename.root"; //CHANGE
 
     TFile* T = TFile::Open(fname.c_str());
-    TTree* tracks = T->Get<TTree>("tree");
+    TTree* tracks = T->Get<TTree>("tree"); //MODIFY TTREE NAME IF DIFFERENT FORM "tree"
 
     std::string cond1 = "-pm7_c>" + pmt_charge;
     std::string cond2 = "dc" + ch + "_c>" + dc_charge + "&&" + cond1;
