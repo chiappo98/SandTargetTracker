@@ -1,0 +1,16 @@
+[
+    {
+        "TRK_bottomDCScrews" : 20.3,
+        "topScintNICO_centreScintLIMADOU" : 0.8,
+        "bottomDC_3WPLANE" : 1.5,
+        "3WPLANE_2WPLANE" : 1,
+        "2WPLANE_1WPLANE" : 1,
+        "1WPLANE_topDC" : 1.5,
+        "DC" : 5.6,
+        "DCwithScrews" : 6,
+        "scintNICO" : 2,
+        "scintLIMADOU" : 1
+
+    }
+
+]
