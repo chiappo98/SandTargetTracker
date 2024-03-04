@@ -97,25 +97,25 @@ class TrackPosition:
             plt.gca().set( title="2-dimensional dataset with principal components", xlabel="first feature", ylabel="second feature")
             plt.legend()
             plt.show()
-    def fit_poly2d(self, x, plot=False):
+    def fit_poly2d(self, x, lim, plot=False):
         dydx = np.gradient(self.sigmaAngle)/self.sigmaAngle
         fit_dydx3 = np.polyfit(x, dydx, 3)
         dydx3_curve = np.poly1d(fit_dydx3)
         x0_idx = (np.abs(dydx3_curve(x) - 0)).argmin()
         x0 = x[x0_idx]    
-        hFitRange = x[(x > x0-3)&(x < x0+3)]
-        sigmaFitRange = self.sigmaAngle[(x > x0-3)&(x < x0+3)]
-        sigmaFit = np.polyfit(hFitRange, sigmaFitRange, 2)
+        xFitRange = x[(x > x0-lim)&(x < x0+lim)]
+        sigmaFitRange = self.sigmaAngle[(x > x0-lim)&(x < x0+lim)]
+        sigmaFit = np.polyfit(xFitRange, sigmaFitRange, 2)
         sigmaCurve = np.poly1d(sigmaFit)
-        self.minH = hFitRange[np.array(sigmaCurve(hFitRange)) == np.min(np.array(sigmaCurve(hFitRange)))][0]
-        self.minSigma = np.min(np.array(sigmaCurve(hFitRange)))
+        self.minH = xFitRange[np.array(sigmaCurve(xFitRange)) == np.min(np.array(sigmaCurve(xFitRange)))][0]
+        self.minSigma = np.min(np.array(sigmaCurve(xFitRange)))
         self.minAngle = self.WireAngle[np.array(sigmaCurve(x)) == np.min(np.array(sigmaCurve(x)))][0]
         self.minPosition = self.WirePosition[np.array(sigmaCurve(x)) == np.min(np.array(sigmaCurve(x)))][0]
         if plot:
             plt.plot(x, self.sigmaAngle, '.')
-            plt.plot(hFitRange, sigmaCurve(hFitRange), '--')
+            plt.plot(xFitRange, sigmaCurve(xFitRange), '--')
             plt.axvline(self.minH, color='g', linestyle='--', label=self.channel+" h="+str(self.minH))
-            plt.xlabel('height (cm)')
+            # plt.xlabel('height (cm)')
             plt.ylabel('sigma')
             plt.legend()
             plt.show()    
