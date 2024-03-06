@@ -20,22 +20,47 @@ class Waveforms:
         self.dfBranches = df.AsNumpy({"id", "ch00", "ch03"})
       
 class TrackPosition:
-    def __init__(self, _fname, _channel, _chargeThr):
+    def __init__(self, _fname, _channel, _chargeThr, _tanThr):
         self.path = '/mnt/e/data/drift_chamber/'  ##MODIFY ACCORDING TO LOCAL MACHINE PATH
         self.fname = _fname
         self.channel = _channel
         self.chargeThr = _chargeThr 
+        self.tanThr  = _tanThr
         self.WirePosition = np.empty(0)
         self.sigmaAngle = np.empty(0)
-        self.WireAngle = np.empty(0)       
-    def import2RDF(self):
+        self.WireAngle = np.empty(0)   
+        self.WireCentroid = np.empty(0)      
+    def import2RDF(self, filter_method):
+        """import data from root TTree to RootDataFrame, and save as python list of arrays
+        Args: filter method for data (charge or angle)
+        """
         df = ROOT.RDataFrame("tree", self.path + self.fname)
-        dfBranches = df.Filter(self.channel + ">" + str(self.chargeThr)).AsNumpy({"x", "y", "z", "sx", "sy", "dc0_c", "dc1_c", "dc2_c", "dc3_c", "dc4_c", "dc5_c"})
-        leafnames = ["x", "y", "z", "sx", "sy", "dc0_c", "dc1_c", "dc2_c", "dc3_c", "dc4_c", "dc5_c"]
+        match filter_method:
+            case "charge":
+                dfBranches = df.Filter(self.channel + ">" + str(self.chargeThr)+
+                                       "&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
+                                       ).AsNumpy({"x", "y", "z", "sx", "sy", 
+                                        "dc0_c", "dc1_c", "dc2_c", "dc3_c", "dc4_c", "dc5_c",
+                                        "dc0_1_c", "dc1_1_c", "dc2_1_c", "dc3_1_c", "dc4_1_c", "dc5_1_c"})
+                leafnames = ["x", "y", "z", "sx", "sy", 
+                            "dc0_c", "dc1_c", "dc2_c", "dc3_c", "dc4_c", "dc5_c",
+                            "dc0_1_c", "dc1_1_c", "dc2_1_c", "dc3_1_c", "dc4_1_c", "dc5_1_c"]
+            case "angle":
+                dfBranches = df.Filter(self.channel + ">" + str(self.chargeThr) + "&&(sx>" + str(self.tanThr) + "||sx<" + str(-self.tanThr) + 
+                                       ")&&(sy>" + str(self.tanThr) + "||sy<" + str(-self.tanThr)+")&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
+                                       ).AsNumpy({"x", "y", "z", "sx", "sy", 
+                                                  "dc0_c", "dc1_c", "dc2_c", "dc3_c", "dc4_c", "dc5_c",
+                                                  "dc0_1_c", "dc1_1_c", "dc2_1_c", "dc3_1_c", "dc4_1_c", "dc5_1_c"})
+                leafnames = ["x", "y", "z", "sx", "sy", 
+                            "dc0_c", "dc1_c", "dc2_c", "dc3_c", "dc4_c", "dc5_c",
+                            "dc0_1_c", "dc1_1_c", "dc2_1_c", "dc3_1_c", "dc4_1_c", "dc5_1_c"]
         self.trackList = []
         for leaf in leafnames:
-            self.trackList.append([np.array(v) for v in dfBranches[leaf]])
+            self.trackList.append([np.array(v) for v in dfBranches[leaf]])               
     def readZmeasures(self, filename):
+        """read measures between detector components from json file.
+        Args: json file
+        """
         f = open(filename)
         measures = json.load(f)[0]
         trk_3Wplane = measures["TRK_bottomDCScrews"] + measures["bottomDC_3WPLANE"]
@@ -43,28 +68,38 @@ class TrackPosition:
         trk_1Wplane = trk_2Wplane + measures["2WPLANE_1WPLANE"]
         self.hplanes = [trk_1Wplane, trk_2Wplane, trk_3Wplane]
     def projectToWplane(self, height = 0):
+        """Project hits at a certain heght wrt the one encoded in Branch 'z'.
+        Args: height
+        """
         self.projectedX = np.array(self.trackList[0]) + height*np.array(self.trackList[3])
         self.projectedY = np.array(self.trackList[1]) + height*np.array(self.trackList[4])
     def rotate(self, angle):
+        """rotate all the hits wrt the origin of tracker SdR
+        Args: angle
+        """
         x, y = self.projectedX, self.projectedY
-        #print(np.array(self.trackList[0]).shape, self.projectedX.shape)
         cord = np.transpose(np.dstack((x,y)).reshape(-1,2))
+        centr = (self.centroid).reshape(2,1)
         angle = angle * np.pi/180
         R = [[np.cos(angle), np.sin(angle)],[-np.sin(angle),np.cos(angle)]]
         new_cord = np.transpose(np.matmul(R,cord))
+        new_centr = np.transpose(np.matmul(R,centr))
         self.rotated_x = new_cord[:,0]
         self.rotated_y = new_cord[:,1]
+        self.rotated_centroid = new_centr
     def Gauss(self, x, A, x0, sigma):
         y = A*np.exp(-(x-x0)**2/(2*sigma**2))
         return y
     def fit_profile(self, plot=False):
+        """fit hits trasversal profile (projected on Y axis) with gaussian"""
         fig = plt.figure()
         h2d = plt.hist2d(self.rotated_x, self.rotated_y, 240) #240 bins => 0.25cm/bin
         self.px_at_Theta = np.sum(h2d[0], axis=1)
         self.py_at_Theta = np.sum(h2d[0], axis=0)    
         self.posx_at_Theta = np.linspace(h2d[1][0] + (h2d[1][1]-h2d[1][0])/2, h2d[1][-2] + (h2d[1][-1]-h2d[1][-2])/2, len(self.px_at_Theta))
         self.posy_at_Theta = np.linspace(h2d[2][0] + (h2d[2][1]-h2d[2][0])/2, h2d[2][-2] + (h2d[2][-1]-h2d[2][-2])/2, len(self.py_at_Theta))
-        self.pyPar_at_Theta, py_cov = curve_fit(self.Gauss, self.posy_at_Theta, self.py_at_Theta)
+        self.pyPar_at_Theta, pcov = curve_fit(self.Gauss, self.posy_at_Theta, self.py_at_Theta, p0=[500, self.hplanes[1], 0.6])
+        self.perr_at_Theta = np.sqrt(np.diag(pcov))
         plt.colorbar()
         plt.xlabel('x')
         plt.ylabel('y')
@@ -79,6 +114,7 @@ class TrackPosition:
             plt.legend()
             plt.show()
     def pca(self, plot=False):
+        """perform pca"""
         hit_x = self.projectedX - np.mean(self.projectedX)
         hit_y = self.projectedY - np.mean(self.projectedY)
         hits_pos = np.array([hit_x, hit_y])
@@ -87,9 +123,11 @@ class TrackPosition:
         self.comp2 = np.array([_pca.components_[1][0], _pca.components_[1][1]])
         weight1, weight2 = _pca.explained_variance_[0], _pca.explained_variance_[1]
         self.pca_angle = np.arccos(np.dot(self.comp1, np.array([1,0]))/(norm(self.comp1)))*180/np.pi
+        if (self.pca_angle>90):
+            self.pca_angle-=180
         if (((_pca.components_[0][0]>0)&(_pca.components_[0][1]<0))|((_pca.components_[0][0]<0)&(_pca.components_[0][1]<0))):
             self.pca_angle = -self.pca_angle
-        self.centroid = np.array([0, _pca.components_[0][0]])
+        self.centroid = np.array([np.mean(self.projectedX), np.mean(self.projectedY)])
         if plot:
             plt.plot(hits_pos[0,:], hits_pos[1,:], '.', markersize=2)
             for i, (comp, var) in enumerate(zip(_pca.components_, _pca.explained_variance_)):
@@ -98,6 +136,11 @@ class TrackPosition:
             plt.legend()
             plt.show()
     def fit_poly2d(self, x, lim, plot=False):
+        """fit sigma distribution wrt X values with parabola
+        Args: 
+            x: x values (height, angle)
+            lim: (int) fit limit
+        """
         dydx = np.gradient(self.sigmaAngle)/self.sigmaAngle
         fit_dydx3 = np.polyfit(x, dydx, 3)
         dydx3_curve = np.poly1d(fit_dydx3)
@@ -110,7 +153,9 @@ class TrackPosition:
         self.minH = xFitRange[np.array(sigmaCurve(xFitRange)) == np.min(np.array(sigmaCurve(xFitRange)))][0]
         self.minSigma = np.min(np.array(sigmaCurve(xFitRange)))
         self.minAngle = self.WireAngle[np.array(sigmaCurve(x)) == np.min(np.array(sigmaCurve(x)))][0]
-        self.minPosition = self.WirePosition[np.array(sigmaCurve(x)) == np.min(np.array(sigmaCurve(x)))][0]
+        # self.minPosition = self.WirePosition[np.array(sigmaCurve(x)) == np.min(np.array(sigmaCurve(x)))][0]
+        # self.WireCentroid = (self.WireCentroid).reshape(-1,2)
+        # self.minCentroid = self.WireCentroid[np.array(sigmaCurve(x)) == np.min(np.array(sigmaCurve(x)))][0]
         if plot:
             plt.plot(x, self.sigmaAngle, '.')
             plt.plot(xFitRange, sigmaCurve(xFitRange), '--')
@@ -135,3 +180,32 @@ class TrackPosition:
         plt.xlabel('x (cm)')
         plt.ylabel('y (cm)')
         plt.title(self.channel)
+        
+class TimeDistance:
+    def __init__(self, _fname, _channel, _chargeThr):
+        self.path = '/mnt/e/data/drift_chamber/'  ##MODIFY ACCORDING TO LOCAL MACHINE PATH
+        self.fname = _fname
+        self.channel = _channel
+        self.chargeThr = _chargeThr  
+    def import2RDF(self):
+        df = ROOT.RDataFrame("tree", self.path + self.fname)
+        dfBranches = df.Filter(self.channel + ">" + str(self.chargeThr)+"&&pm7_c>0.2e-10").AsNumpy({"x", "y", "z", "sx", "sy", 
+                                                                                  "dc0_c", "dc1_c", "dc2_c", "dc3_c", "dc4_c", "dc5_c", "pm7_c",
+                                                                                  "dc0_t", "dc1_t", "dc2_t", "dc3_t", "dc4_t", "dc5_t", "pm7_t"})
+        leafnames = ["x", "y", "z", "sx", "sy", 
+                     "dc0_c", "dc1_c", "dc2_c", "dc3_c", "dc4_c", "dc5_c", "pm7_c",
+                     "dc0_t", "dc1_t", "dc2_t", "dc3_t", "dc4_t", "dc5_t", "pm7_t"]
+        self.trackList = []
+        for leaf in leafnames:
+            self.trackList.append([np.array(v) for v in dfBranches[leaf]])
+    def projectToWplane(self, height = 0):
+        self.projectedX = np.array(self.trackList[0]) + height*np.array(self.trackList[3])
+        self.projectedY = np.array(self.trackList[1]) + height*np.array(self.trackList[4])
+    def rotate(self, angle):
+        x, y = self.projectedX, self.projectedY
+        cord = np.transpose(np.dstack((x,y)).reshape(-1,2))
+        angle = angle * np.pi/180
+        R = [[np.cos(angle), np.sin(angle)],[-np.sin(angle),np.cos(angle)]]
+        new_cord = np.transpose(np.matmul(R,cord))
+        self.rotated_x = new_cord[:,0]
+        self.rotated_y = new_cord[:,1]

@@ -20,7 +20,7 @@ def findXYwire(hitFile, channel, plotSigma=False, plotProfile=False):
      Returns:
         wire angle
     """    
-    tracks = TrackPosition(hitFile, channel, 0.02e-9)
+    tracks = TrackPosition(hitFile, channel, 0.02e-9, 0.05)
     tracks.import2RDF()
     tracks.WireAngle = np.arange(-12,6,0.2)
     
@@ -50,7 +50,7 @@ def findXYwire_pca(filename, channel, plotPCA=False, plotProfile=False):
      Returns:
         wire angle
     """  
-    tracksPCA = TrackPosition(filename, channel, 0.02e-9) 
+    tracksPCA = TrackPosition(filename, channel, 0.02e-9, 0.05) 
     tracksPCA.import2RDF()
     tracksPCA.projectToWplane()
     
@@ -64,7 +64,7 @@ def findXYwire_pca(filename, channel, plotPCA=False, plotProfile=False):
     
     return minimumAngle, #wirePosition
 
-def findXYZ(hitFile, coordinateFile, channel, plane, plotZSigma=False):
+def findXYZ(hitFile, coordinateFile, channel, plane, plotZSigma=False, plotProfile=False):
     """find best values for : wire height, angle and intercept (with x=0 axis)
      Args:
         hitFile: root file with hits from tracker
@@ -76,11 +76,11 @@ def findXYZ(hitFile, coordinateFile, channel, plane, plotZSigma=False):
         height at which hits stored in the TTree are computed
         wire height(wrt TTree height), angle, intercept and sigma
     """
-    tracks = TrackPosition(hitFile, channel, 0.02e-9) 
-    tracks.import2RDF()
+    tracks = TrackPosition(hitFile, channel, 0.02e-9, 0.02) 
+    tracks.import2RDF("charge")
     tracks.readZmeasures(coordinateFile)
     hTracker = np.mean(tracks.trackList[2])
-    height = np.arange(-6, 12, 0.3) + tracks.hplanes[plane]
+    height = np.arange(-1, 12, 0.3) + tracks.hplanes[plane] #-6
     for h in height:
         tracks.projectToWplane(h)
         tracks.pca()
@@ -88,14 +88,22 @@ def findXYZ(hitFile, coordinateFile, channel, plane, plotZSigma=False):
         tracks.fit_profile()
         tracks.sigmaAngle = np.append(tracks.sigmaAngle, abs(tracks.pyPar_at_Theta[2]))
         tracks.WireAngle = np.append(tracks.WireAngle, tracks.pca_angle)
-        tracks.WirePosition = np.append(tracks.WirePosition, tracks.pyPar_at_Theta[1])
     tracks.fit_poly2d(height, 4, plotZSigma)
+    tracks.projectToWplane(tracks.minH)
+    tracks.pca()
+    tracks.rotate(tracks.minAngle)
+    tracks.fit_profile()
+    minPosition = [tracks.pyPar_at_Theta[1], tracks.perr_at_Theta[1]]
+    minCentroid = (tracks.rotated_centroid).tolist()
     # tracks.plotTracks("original")
     # tracks.plotTracks("projected")
     # tracks.plotTracks("wireFit")
     # plt.legend()
     # plt.show()
-    return hTracker, [tracks.minH, tracks.minAngle, tracks.minPosition, tracks.minSigma]
+    if plotProfile:
+        tracks.rotate(tracks.minAngle)
+        tracks.fit_profile(True)
+    return hTracker, [tracks.minH, tracks.pca_angle, minPosition, minCentroid, tracks.minSigma]
 
 def line_intersection(x_i, x_f, y_i, y_f):
     """find intersections between two lines
@@ -110,7 +118,6 @@ def line_intersection(x_i, x_f, y_i, y_f):
         return a[0] * b[1] - a[1] * b[0]
 
     div = det(xdiff, ydiff)
-    # in case we loop over all wires we could have to modify this if condition
     if not div == 0:
         d = (det(*((x_i[0], y_i[0]),(x_f[0], y_f[0]))), det(*((x_i[1], y_i[1]),(x_f[1], y_f[1]))))
         x = det(d, xdiff) / div
@@ -130,7 +137,7 @@ def findWireIntersections(coord_dict, layer, channel):
     theta= []
     for i in range(0,3):
         for ch in channel[i]:
-            y0.append(coord_dict[layer[i]][ch]["intercept"])
+            y0.append(coord_dict[layer[i]][ch]["intercept"][0])
             theta.append(coord_dict[layer[i]][ch]["theta"])
     # maybe the previous part can be included in the creation of the dict, so that we can pass
     # just two lists (y0 and theta) to this func.
@@ -149,6 +156,28 @@ def findWireIntersections(coord_dict, layer, channel):
     plt.xlabel('x (cm)')
     plt.ylabel('y (cm)')
     plt.show()
+    return 0
+
+def compute_geometry(layer):
+    #NOT READY
+    with open("./prototype_toy_model/geo_config.json") as f:
+        geo_dict = json.load(f)
+    z_off, y_off, ncells = [], [], []    
+    pitch = geo_dict["wire_spacing"]
+    theta = np.array([5, 0, -5])
+    for l in layer:
+        z_off.append(geo_dict[l]["x_off"])
+        y_off.append(geo_dict[l]["x_off"])
+        ncells.append(geo_dict[l]["n_cells"])
+    layer1Y = np.linspace(y_off[0], y_off[0]+ncells[0]*pitch, ncells[0])
+    layer2Y = np.linspace(y_off[1], y_off[1]+ncells[1]*pitch, ncells[1])
+    layer3Y = np.linspace(y_off[2], y_off[2]+ncells[2]*pitch, ncells[2])   
+    
+    Ywires_i = np.array([layer1Y[0], layer2Y[1], layer2Y[0]])
+    Xwires_i = 0#np.array(x_off)
+    Xwires_f = Xwires_i+40
+    Ywires_f = Ywires_f + np.sin(theta*np.pi/180)*Xwires_f
+    
     return 0
 
 if __name__ == "__main__":
@@ -188,21 +217,21 @@ if __name__ == "__main__":
             plt.show()
         
         case "XYZpca":
-            channel = [["dc0_c", "dc3_c"], ["dc1_c", "dc4_c"], ["dc2_c", "dc5_c"]] 
+            channel = [["dc0_c", "dc3_c", "dc0_1_c", "dc3_1_c"], ["dc1_c", "dc4_c", "dc1_1_c", "dc4_1_c"], ["dc2_c", "dc5_c", "dc2_1_c", "dc5_1_c"]] 
             plane = [0,1,2]
             layer = ["layer_1","layer_2","layer_3"]
-            coord = ["height", "theta", "intercept", "sigmaAngle"]
+            coord = ["height", "theta", "intercept", "centroid", "sigmaAngle"]
             output_dict = {}
             for l in range(0,3):
                 layer_dict = {}
                 for ch in channel[l]:
                     hTracker, values = findXYZ(args.rootFile, args.coordFile, ch, plane[l])
                     layer_dict[ch] = dict(zip(coord, values))
-                    print(ch, values[0]+hTracker, values[1])
+                    print(ch, values[0]+hTracker, values[1:])
                 output_dict[layer[l]] = layer_dict
             output_dict["h0_hits"] = hTracker
             
             findWireIntersections(output_dict, layer, channel)
             
-            with open("measures.json", "w") as outfile: 
+            with open("measures_20240304.json", "w") as outfile: 
                 json.dump(output_dict, outfile)
