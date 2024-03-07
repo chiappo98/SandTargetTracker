@@ -39,21 +39,13 @@ class TrackPosition:
             case "charge":
                 dfBranches = df.Filter(self.channel + ">" + str(self.chargeThr)+
                                        "&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
-                                       ).AsNumpy({"x", "y", "z", "sx", "sy", 
-                                        "dc0_c", "dc1_c", "dc2_c", "dc3_c", "dc4_c", "dc5_c",
-                                        "dc0_1_c", "dc1_1_c", "dc2_1_c", "dc3_1_c", "dc4_1_c", "dc5_1_c"})
-                leafnames = ["x", "y", "z", "sx", "sy", 
-                            "dc0_c", "dc1_c", "dc2_c", "dc3_c", "dc4_c", "dc5_c",
-                            "dc0_1_c", "dc1_1_c", "dc2_1_c", "dc3_1_c", "dc4_1_c", "dc5_1_c"]
+                                       ).AsNumpy({"x", "y", "z", "sx", "sy"})
+                leafnames = ["x", "y", "z", "sx", "sy"]
             case "angle":
                 dfBranches = df.Filter(self.channel + ">" + str(self.chargeThr) + "&&(sx>" + str(self.tanThr) + "||sx<" + str(-self.tanThr) + 
                                        ")&&(sy>" + str(self.tanThr) + "||sy<" + str(-self.tanThr)+")&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
-                                       ).AsNumpy({"x", "y", "z", "sx", "sy", 
-                                                  "dc0_c", "dc1_c", "dc2_c", "dc3_c", "dc4_c", "dc5_c",
-                                                  "dc0_1_c", "dc1_1_c", "dc2_1_c", "dc3_1_c", "dc4_1_c", "dc5_1_c"})
-                leafnames = ["x", "y", "z", "sx", "sy", 
-                            "dc0_c", "dc1_c", "dc2_c", "dc3_c", "dc4_c", "dc5_c",
-                            "dc0_1_c", "dc1_1_c", "dc2_1_c", "dc3_1_c", "dc4_1_c", "dc5_1_c"]
+                                       ).AsNumpy({"x", "y", "z", "sx", "sy"})
+                leafnames = ["x", "y", "z", "sx", "sy"]
         self.trackList = []
         for leaf in leafnames:
             self.trackList.append([np.array(v) for v in dfBranches[leaf]])               
@@ -79,14 +71,11 @@ class TrackPosition:
         """
         x, y = self.projectedX, self.projectedY
         cord = np.transpose(np.dstack((x,y)).reshape(-1,2))
-        centr = (self.centroid).reshape(2,1)
         angle = angle * np.pi/180
         R = [[np.cos(angle), np.sin(angle)],[-np.sin(angle),np.cos(angle)]]
         new_cord = np.transpose(np.matmul(R,cord))
-        new_centr = np.transpose(np.matmul(R,centr))
         self.rotated_x = new_cord[:,0]
         self.rotated_y = new_cord[:,1]
-        self.rotated_centroid = new_centr
     def Gauss(self, x, A, x0, sigma):
         y = A*np.exp(-(x-x0)**2/(2*sigma**2))
         return y
@@ -100,6 +89,9 @@ class TrackPosition:
         self.posy_at_Theta = np.linspace(h2d[2][0] + (h2d[2][1]-h2d[2][0])/2, h2d[2][-2] + (h2d[2][-1]-h2d[2][-2])/2, len(self.py_at_Theta))
         self.pyPar_at_Theta, pcov = curve_fit(self.Gauss, self.posy_at_Theta, self.py_at_Theta, p0=[500, self.hplanes[1], 0.6])
         self.perr_at_Theta = np.sqrt(np.diag(pcov))
+        # self.FWHM = curve_fit(np.arange(self.pyPar_at_Theta[1]-2, self.pyPar_at_Theta[1]+2, 0.01))==curve_fit(self.pyPar_at_Theta[1])/2
+        # print(self.FWHM, self.pyPar_at_Theta[2])#TESTTT
+        
         plt.colorbar()
         plt.xlabel('x')
         plt.ylabel('y')
@@ -177,6 +169,7 @@ class TrackPosition:
                 yline = float(self.pyPar_at_Theta[1]) + np.linspace(0,40,40)*np.sin(self.minAngle* np.pi/180)
                 plt.plot(self.projectedX, self.projectedY, '.', markersize=2)
                 plt.plot(xline, yline, '--', label=r': $\theta$='+ '{:.3f}'.format(self.minAngle)+r'° , $\sigma$='+ '{:.2f}'.format(self.pyPar_at_Theta[2]))
+                plt.plot(self.centroid[0], self.centroid[1], 'o')
         plt.xlabel('x (cm)')
         plt.ylabel('y (cm)')
         plt.title(self.channel)
@@ -189,23 +182,45 @@ class TimeDistance:
         self.chargeThr = _chargeThr  
     def import2RDF(self):
         df = ROOT.RDataFrame("tree", self.path + self.fname)
-        dfBranches = df.Filter(self.channel + ">" + str(self.chargeThr)+"&&pm7_c>0.2e-10").AsNumpy({"x", "y", "z", "sx", "sy", 
-                                                                                  "dc0_c", "dc1_c", "dc2_c", "dc3_c", "dc4_c", "dc5_c", "pm7_c",
-                                                                                  "dc0_t", "dc1_t", "dc2_t", "dc3_t", "dc4_t", "dc5_t", "pm7_t"})
-        leafnames = ["x", "y", "z", "sx", "sy", 
-                     "dc0_c", "dc1_c", "dc2_c", "dc3_c", "dc4_c", "dc5_c", "pm7_c",
-                     "dc0_t", "dc1_t", "dc2_t", "dc3_t", "dc4_t", "dc5_t", "pm7_t"]
+        dfTrackBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&"+str(self.channel)+"_pp>0.015&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
+                                                                                ).AsNumpy({"x", "y", "z", "sx", "sy"})
+        dfTimeBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&"+str(self.channel)+"_pp>0.015&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
+                                                                                ).AsNumpy({str(self.channel)+"_t", "pm7_t"})
+        dfChannelBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&"+str(self.channel)+"_pp>0.015&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
+                                                                                ).AsNumpy({str(self.channel)+"_c"})
+        trackLeaf = ["x", "y", "z", "sx", "sy"]
+        TimeLeaf = [str(self.channel)+"_t", "pm7_t"]
+        ChannelLeaf = [str(self.channel)+"_c"]
         self.trackList = []
-        for leaf in leafnames:
-            self.trackList.append([np.array(v) for v in dfBranches[leaf]])
+        self.TimeList = []
+        self.ChList = [] # THIS MAY NOT BE
+        for leaf in trackLeaf:
+            self.trackList.append([np.array(v) for v in dfTrackBranches[leaf]])
+        for leaf in TimeLeaf:
+            self.TimeList.append([np.array(v) for v in dfTimeBranches[leaf]])
+        for leaf in ChannelLeaf:
+            self.ChList.append([np.array(v) for v in dfChannelBranches[leaf]])
     def projectToWplane(self, height = 0):
         self.projectedX = np.array(self.trackList[0]) + height*np.array(self.trackList[3])
         self.projectedY = np.array(self.trackList[1]) + height*np.array(self.trackList[4])
-    def rotate(self, angle):
-        x, y = self.projectedX, self.projectedY
-        cord = np.transpose(np.dstack((x,y)).reshape(-1,2))
-        angle = angle * np.pi/180
-        R = [[np.cos(angle), np.sin(angle)],[-np.sin(angle),np.cos(angle)]]
-        new_cord = np.transpose(np.matmul(R,cord))
-        self.rotated_x = new_cord[:,0]
-        self.rotated_y = new_cord[:,1]
+        
+class Distance:
+    def __init__(self, _fname, _channel, _chargeThr):
+        self.path = '/mnt/e/data/drift_chamber/'  ##MODIFY ACCORDING TO LOCAL MACHINE PATH
+        self.fname = _fname
+        self.channel = _channel
+        self.chargeThr = _chargeThr  
+    def import2RDF(self):
+        df = ROOT.RDataFrame("tree", self.path + self.fname)
+        dfTrackBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&"+str(self.channel)+"_pp>0.015&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
+                                                                                ).AsNumpy({"x", "y", "z", "sx", "sy", "nTracksXZ", "nTracksYZ", "nClusterX", "nClusterY", "dX_pos", "dY_pos", "dX_z", "dY_z"})
+        dfChannelBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&"+str(self.channel)+"_pp>0.015&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
+                                                                                ).AsNumpy({str(self.channel)+"_c"})
+        trackLeaf = ["x", "y", "z", "sx", "sy"]
+        ChannelLeaf = [str(self.channel)+"_c"]
+        self.trackList = []
+        self.ChList = [] # THIS MAY NOT BE
+        for leaf in trackLeaf:
+            self.trackList.append([np.array(v) for v in dfTrackBranches[leaf]])
+        for leaf in ChannelLeaf:
+            self.ChList.append([np.array(v) for v in dfChannelBranches[leaf]])

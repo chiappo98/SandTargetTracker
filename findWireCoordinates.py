@@ -80,7 +80,7 @@ def findXYZ(hitFile, coordinateFile, channel, plane, plotZSigma=False, plotProfi
     tracks.import2RDF("charge")
     tracks.readZmeasures(coordinateFile)
     hTracker = np.mean(tracks.trackList[2])
-    height = np.arange(-1, 12, 0.3) + tracks.hplanes[plane] #-6
+    height = np.arange(-3, 12, 0.3) + tracks.hplanes[plane] #-6
     for h in height:
         tracks.projectToWplane(h)
         tracks.pca()
@@ -94,12 +94,14 @@ def findXYZ(hitFile, coordinateFile, channel, plane, plotZSigma=False, plotProfi
     tracks.rotate(tracks.minAngle)
     tracks.fit_profile()
     minPosition = [tracks.pyPar_at_Theta[1], tracks.perr_at_Theta[1]]
-    minCentroid = (tracks.rotated_centroid).tolist()
-    # tracks.plotTracks("original")
-    # tracks.plotTracks("projected")
-    # tracks.plotTracks("wireFit")
-    # plt.legend()
-    # plt.show()
+    minCentroid = (tracks.centroid).tolist()
+    plothits= False
+    if plothits:
+        tracks.plotTracks("original")
+        tracks.plotTracks("projected")
+        tracks.plotTracks("wireFit")
+        plt.legend()
+        plt.show()
     if plotProfile:
         tracks.rotate(tracks.minAngle)
         tracks.fit_profile(True)
@@ -224,14 +226,23 @@ if __name__ == "__main__":
             output_dict = {}
             for l in range(0,3):
                 layer_dict = {}
+                h, angle, position, posErr= [], [], [], []
+                print(layer[l])
                 for ch in channel[l]:
                     hTracker, values = findXYZ(args.rootFile, args.coordFile, ch, plane[l])
                     layer_dict[ch] = dict(zip(coord, values))
                     print(ch, values[0]+hTracker, values[1:])
+                    h.append(values[0])
+                    angle.append(values[1])
+                    # position.append(values[2][0])
+                    # posErr.append(values[2][1])
                 output_dict[layer[l]] = layer_dict
+                print("height:", np.mean(np.array(h)), '+/-',np.std(np.array(h)))
+                print("angle:", np.mean(np.array(angle)), '+/-',np.std(np.array(angle)))
+                # print("intercept:", np.mean(np.array(position)), "+/-", np.sqrt(np.sum(np.array(posErr)**2))/len(posErr))
             output_dict["h0_hits"] = hTracker
             
             findWireIntersections(output_dict, layer, channel)
             
-            with open("measures_20240304.json", "w") as outfile: 
+            with open("measures_20240307.json", "w") as outfile: 
                 json.dump(output_dict, outfile)
