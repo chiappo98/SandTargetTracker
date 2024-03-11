@@ -1,24 +1,57 @@
 from matplotlib import pyplot as plt
 import ROOT
 import numpy as np
-import glob
 from scipy.optimize import curve_fit
 from sklearn.decomposition import PCA
 from numpy.linalg import norm
 import json
+import re
 
 class Waveforms:
-    def __init__(self, _channel, _chargeThr):
-        self.path = '/mnt/e/data/drift_chamber/' ##MODIFY ACCORDING TO LOCAL MACHINE PATH
-        self.channel = _channel
-        self.chargeThr = _chargeThr
-    def import2RDF(self):
-        chain = ROOT.TChain("EvFromDig")
-        for f in sorted(glob.glob(self.path + 'run_*_0x17520000v1751.root')):
-            chain.Add(f)
+    def __init__(self, _channel):#, _chargeThr):
+        self.Treepath = '/mnt/e/data/drift_chamber/' ##MODIFY ACCORDING TO LOCAL MACHINE PATH
+        self.WFpath = '/mnt/e/data/drift_chamber/runs_350_onwards/' ##MODIFY ACCORDING TO LOCAL MACHINE PATH
+        self.channel = "ch0"+re.split('c|_', _channel)[1]
+        self.dig = "51" if len(re.split('c|_', _channel))>2 else "52"
+        # self.chargeThr = _chargeThr
+    def import2RDF(self, run_i, run_f, method, entry=0):
+        """import waveforms to RootDataFrame and plot selected ones
+        Args:
+            run_i, run_f: initial-final run number
+            method: "plot_entry", plot specifc entry/entries
+                    "id", returns event id
+            entry: int or array representing event numbers 
+        """
+        chain = ROOT.TChain("EventsFromDigitizer")
+        pmchain = ROOT.TChain("EventsFromDigitizer")
+        for r in range(run_i, run_f+1):
+            chain.Add(self.WFpath+"run_"+str(r)+"_0x17"+self.dig+"0000v1751.root")
+            pmchain.Add(self.WFpath+"run_"+str(r)+"_0x17520000v1751.root")
         df = ROOT.RDataFrame(chain)
-        self.dfBranches = df.AsNumpy({"id", "ch00", "ch03"})
-      
+        pmdf = ROOT.RDataFrame(pmchain)
+        #self.dfBranches = df52.AsNumpy({"id", "ch00", "ch03"}) #this may not work (out of memory)
+        # should filter directly over one entry and plot it, or work inside RDF
+        match method:
+            case "plot_WFentry":
+                for e in entry:
+                    chdf = df.Filter("id == " + str(e)).AsNumpy({self.channel})  
+                    wf = [np.array(v) for v in chdf[self.channel]]
+                    plt.plot(np.arange(0,len(wf[0])), np.asarray(wf[0]), linewidth=0.7)
+                plt.xlabel("Iteration")
+                plt.ylabel("signal")
+                plt.show()
+            case "plot_PMTentry":
+                for e in entry:
+                    chdf = pmdf.Filter("id == " + str(e)).AsNumpy({"ch07"})  
+                    pm = [np.array(v) for v in chdf["ch07"]]
+                    plt.plot(np.arange(0,len(pm[0])), np.asarray(pm[0]), linewidth=0.7)
+                plt.xlabel("Iteration")
+                plt.ylabel("signal")
+                plt.show()
+            case "id":
+                dfBranch = df.AsNumpy({"id"})
+                self.idList = [np.array(v) for v in dfBranch["id"]]
+            
 class TrackPosition:
     def __init__(self, _fname, _channel, _chargeThr, _tanThr):
         self.path = '/mnt/e/data/drift_chamber/'  ##MODIFY ACCORDING TO LOCAL MACHINE PATH
@@ -145,9 +178,6 @@ class TrackPosition:
         self.minH = xFitRange[np.array(sigmaCurve(xFitRange)) == np.min(np.array(sigmaCurve(xFitRange)))][0]
         self.minSigma = np.min(np.array(sigmaCurve(xFitRange)))
         self.minAngle = self.WireAngle[np.array(sigmaCurve(x)) == np.min(np.array(sigmaCurve(x)))][0]
-        # self.minPosition = self.WirePosition[np.array(sigmaCurve(x)) == np.min(np.array(sigmaCurve(x)))][0]
-        # self.WireCentroid = (self.WireCentroid).reshape(-1,2)
-        # self.minCentroid = self.WireCentroid[np.array(sigmaCurve(x)) == np.min(np.array(sigmaCurve(x)))][0]
         if plot:
             plt.plot(x, self.sigmaAngle, '.')
             plt.plot(xFitRange, sigmaCurve(xFitRange), '--')
@@ -183,7 +213,7 @@ class TimeDistance:
     def import2RDF(self):
         df = ROOT.RDataFrame("tree", self.path + self.fname)
         dfTrackBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&"+str(self.channel)+"_pp>0.015&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
-                                                                                ).AsNumpy({"x", "y", "z", "sx", "sy"})
+                                                                                ).AsNumpy({"entry", "x", "y", "z", "sx", "sy"})
         dfTimeBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&"+str(self.channel)+"_pp>0.015&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
                                                                                 ).AsNumpy({str(self.channel)+"_t", "pm7_t"})
         dfChannelBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&"+str(self.channel)+"_pp>0.015&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
@@ -193,7 +223,8 @@ class TimeDistance:
         ChannelLeaf = [str(self.channel)+"_c"]
         self.trackList = []
         self.TimeList = []
-        self.ChList = [] # THIS MAY NOT BE
+        self.ChList = [] # THIS MAY NOT BE USED
+        self.entryList = [np.array(v) for v in dfTrackBranches["entry"]]
         for leaf in trackLeaf:
             self.trackList.append([np.array(v) for v in dfTrackBranches[leaf]])
         for leaf in TimeLeaf:
@@ -208,19 +239,15 @@ class Distance:
     def __init__(self, _fname, _channel, _chargeThr):
         self.path = '/mnt/e/data/drift_chamber/'  ##MODIFY ACCORDING TO LOCAL MACHINE PATH
         self.fname = _fname
-        self.channel = _channel
+        self.channel = _channel#"dc"+str(_channel)
         self.chargeThr = _chargeThr  
     def import2RDF(self):
         df = ROOT.RDataFrame("tree", self.path + self.fname)
-        dfTrackBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&"+str(self.channel)+"_pp>0.015&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
-                                                                                ).AsNumpy({"x", "y", "z", "sx", "sy", "nTracksXZ", "nTracksYZ", "nClusterX", "nClusterY", "dX_pos", "dY_pos", "dX_z", "dY_z"})
-        dfChannelBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&"+str(self.channel)+"_pp>0.015&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
-                                                                                ).AsNumpy({str(self.channel)+"_c"})
-        trackLeaf = ["x", "y", "z", "sx", "sy"]
-        ChannelLeaf = [str(self.channel)+"_c"]
+        dfEntryBranches = df.AsNumpy({"entry"})
+        dfTrackBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5").AsNumpy({"entry", "x", "y", "z", "sx", "sy", "clX_pos.clY_pos", "clX_z", "clY_z"})
+        trackLeaf = ["x", "y", "z", "sx", "sy","clX_pos.clY_pos", "clX_z", "clY_z"]
+        self.entryList = [np.array(v) for v in dfEntryBranches["entry"]]
         self.trackList = []
-        self.ChList = [] # THIS MAY NOT BE
-        for leaf in trackLeaf:
-            self.trackList.append([np.array(v) for v in dfTrackBranches[leaf]])
-        for leaf in ChannelLeaf:
-            self.ChList.append([np.array(v) for v in dfChannelBranches[leaf]])
+        # for leaf in entryLeaf:
+        #     self.entryList.append([np.array(v) for v in dfTrackBranches[leaf]])
+        #even with this filter we go aout of memory, maybe need to work inside RDF?
