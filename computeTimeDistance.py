@@ -88,17 +88,19 @@ def plot_td_fit(d, t, plot = False):
         plt.ylabel('time (s)')
         plt.legend()
         fig1 = plt.figure()
-        plt.plot(d,t,'.', markersize=2)
-        plt.plot(mean_td[:,0][mean_td[:,0]<1], line(mean_td[:,0][mean_td[:,0]<1], ppar[0], ppar[1]), '--', label=r'v=%.2F $\mu$m/ns' % (1e-5/ppar[0]))
+        # plt.plot(d,t,'.', markersize=2)
+        plt.hist2d(d, t, 70)
+        plt.plot(mean_td[:,0][mean_td[:,0]<1], line(mean_td[:,0][mean_td[:,0]<1], ppar[0], ppar[1]), 'r--', label=r'v=%.2F $\mu$m/ns' % (1e-5/ppar[0]))
         plt.xlabel('distance (cm)')
         plt.ylabel('time (s)')
         plt.legend()
+        plt.colorbar()
         plt.show()
 
 def plotWF(channel, entries):
     w = Waveforms(channel) 
     #w.import2RDF(350,659, "plot_WFentry", entries[:10])
-    w.import2RDF(350,659, "plot_PMTentry", entries[:10])
+    w.import2RDF(350,659, "plot_PMTentry", entries[:100])
     return 0
 
 if __name__ == "__main__":
