@@ -5,21 +5,6 @@ import json
 from scipy.optimize import curve_fit
 from hitPreprocessing import TimeDistance, Waveforms
 
-def compute_distance3D(Wpoint, WangleX, Tpoint, TtanX, TtanY):
-    """compute distance using track and wire equations
-    Args:
-        Wpoint: point of the wire, coordinates [x,y,z]
-        WangleX: wire angle (deg)
-        Tpoint: point of the track, coordinates [x,y,z]
-        TtanX: tangent in plane XZ
-        TtanY: tangent in plane YZ
-    """
-    Wvec = np.transpose(np.array([np.cos(WangleX*np.pi/180), np.sin(WangleX*np.pi/180), 0]).reshape(3,1) *np.ones((1, TtanX.size)) )
-    Tvec = np.transpose(np.array([TtanX, TtanY, np.ones(TtanX.size)]))
-    Wpoint = Wpoint.reshape(1,3)
-    Tpoint = np.transpose(Tpoint)
-    distance = np.abs(np.diag(np.matmul(np.cross(Wvec, Tvec),np.transpose(Tpoint-Wpoint))))
-    return distance
 
 def findTime_Distance(hitFile, measureDict, channel, layer, plot=False):
     """plot time-distance relation
@@ -31,49 +16,52 @@ def findTime_Distance(hitFile, measureDict, channel, layer, plot=False):
     """
     td = TimeDistance(hitFile, channel, 0.02e-9) 
     td.import2RDF()
-    Channel = channel+"_c"   # TEMPORARY -> MODIFY DICT
-    Z = measureDict[layer][Channel]["height"]
-    td.projectToWplane(Z)
-    theta = measureDict[layer][Channel]["theta"]
-    centroid = measureDict[layer][Channel]["centroid"]
-    Tx, Ty = td.projectedX, td.projectedY
+    Z = measureDict[layer][channel+"_c"]["height"]
+    theta = measureDict[layer][channel+"_c"]["theta"]
+    centroid = measureDict[layer][channel+"_c"]["centroid"]
     Wpoint = np.array([centroid[0], centroid[1], 0])
-    Tpoint = np.array([Tx, Ty, np.zeros(Ty.size)])
-    # NOTE: I assume z=0 for points of both wire and tracks
-    tanX, tanY = np.array(td.trackList[3]), np.array(td.trackList[4])
-    distance = compute_distance3D(Wpoint, theta, Tpoint, tanX, tanY)
+    td.projectToWplane(Z)
+    td.compute_distance3D(Wpoint, theta)
     time = (np.array(td.TimeList[0])-np.array(td.TimeList[-1]))
     if plot:
         maxDist = np.sqrt(0.5**2+1)
         fig0, ax0 = plt.subplots(1,2)
-        ax0[0].plot(Tx, Ty, '.', markersize=2)
-        ax0[1].plot(distance[time>0], time[time>0], '.', markersize=2)
+        ax0[0].plot(td.projectedX, td.projectedY, '.', markersize=2)
+        ax0[1].plot(td.distance[time>0], time[time>0], '.', markersize=2)
         ax0[1].axvline(np.sqrt(2+1), color='g', linestyle='--')
-        plt.title(channel+" - distance")
+        plt.title(channel+" - td.distance")
         fig1, ax1 = plt.subplots(1,2)
-        ax1[0].hist(distance,100)
+        ax1[0].hist(td.distance,100)
         ax1[0].axvline(maxDist, color='r', linestyle='--')
         ax1[1].hist(time,70)
         plt.title(channel+" - time")
         plt.figure()
-        plt.plot(Tx[distance>maxDist], Ty[distance>maxDist], '.', markersize=2)
-        plt.plot(Tx[distance<2.5], Ty[distance<2.5], '.', markersize=2)
-        plt.plot(Tx[distance<maxDist], Ty[distance<maxDist], '.', markersize=2)
+        plt.plot(td.projectedX[td.distance>maxDist], td.projectedY[td.distance>maxDist], '.', markersize=2)
+        plt.plot(td.projectedX[td.distance<2.5], td.projectedY[td.distance<2.5], '.', markersize=2)
+        plt.plot(td.projectedX[td.distance<maxDist], td.projectedY[td.distance<maxDist], '.', markersize=2)
         plt.title(channel)
         plt.xlabel("distance (cm)")
         plt.ylabel("time (s)")
         plt.figure()
-        plt.hist2d(distance[np.logical_and(time>0, distance<2.5)], time[np.logical_and(time>0, distance<2.5)], 70)
+        plt.hist2d(td.distance[np.logical_and(time>0, td.distance<2.5)], time[np.logical_and(time>0, td.distance<2.5)], 70)
         plt.colorbar()
         plt.title(channel)
         plt.xlabel("distance (cm)")
         plt.ylabel("time (s)")
         plt.show()
-    return time, distance, td.entryList
+    return time, td.distance, td.entryList
 
-def plot_td_fit(d, t, plot = False):
-    sort_idx = np.argsort(d)
-    split_td = np.array_split(np.vstack((d[sort_idx],t[sort_idx])), 50, axis=1)
+def plot_sliced_distribution(split_td):
+    fig, ax = plt.subplots(5,2)
+    i = 0
+    for l in split_td:
+        plt.figure("distance histo")
+        plt.hist(l[0,:], 7)
+        ax[(i-(i//10)*10)//2,(i//10)].hist(l[1,:], 20 ,histtype='step')
+        i += 1
+    plt.show()
+
+def fit_td(split_td, plot=False):
     mean_td = [np.mean(l, axis=1) for l in split_td]
     mean_td = np.array(mean_td)
     def line(x, m, q):
@@ -95,12 +83,23 @@ def plot_td_fit(d, t, plot = False):
         plt.ylabel('time (s)')
         plt.legend()
         plt.colorbar()
-        plt.show()
+        plt.show()   
+        return 0
+    
+def plot_td_fit(d, t, plot = False):
+    sort_idx = np.argsort(d)
+    split_steps = []
+    for v in np.arange(2.5/20, 2.5, 2.5/20):
+        split_steps.append(np.where(d[sort_idx]<v)[0][-1])
+    split_td = np.array_split(np.vstack((d[sort_idx],t[sort_idx])), np.array(split_steps), axis=1)
+    plot_sliced_distribution(split_td)
+    fit_td(split_td, plot=True)
+    return 0
 
 def plotWF(channel, entries):
     w = Waveforms(channel) 
-    #w.import2RDF(350,659, "plot_WFentry", entries[:10])
-    w.import2RDF(350,659, "plot_PMTentry", entries[:100])
+    w.import2RDF(350,659, "plot_WFentry", entries[:10])
+    w.import2RDF(350,659, "plot_PMTentry", entries[:10])
     return 0
 
 if __name__ == "__main__":
@@ -137,5 +136,4 @@ if __name__ == "__main__":
         plot_td_fit(d_filt, t_filt, plot=True)
         if args.inspectWF != 0:
             selected_entries = np.array(entry)[np.logical_and(t>0, t>args.inspectWF[0], t<args.inspectWF[1])]
-            #print(np.asarray(entry)[np.logical_and(t>0, d>args.inspectWF[0], d<args.inspectWF[1])].shape)
             plotWF(args.method, selected_entries)
