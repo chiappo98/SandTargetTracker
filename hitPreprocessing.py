@@ -6,6 +6,8 @@ from sklearn.decomposition import PCA
 from numpy.linalg import norm
 import json
 import re
+# from numba import njit
+import utils
 
 class Waveforms:
     def __init__(self, _channel):#, _chargeThr):
@@ -124,7 +126,6 @@ class TrackPosition:
         self.perr_at_Theta = np.sqrt(np.diag(pcov))
         # self.FWHM = curve_fit(np.arange(self.pyPar_at_Theta[1]-2, self.pyPar_at_Theta[1]+2, 0.01))==curve_fit(self.pyPar_at_Theta[1])/2
         # print(self.FWHM, self.pyPar_at_Theta[2])#TESTTT
-        
         plt.colorbar()
         plt.xlabel('x')
         plt.ylabel('y')
@@ -216,38 +217,106 @@ class TimeDistance:
                                                                                 ).AsNumpy({"entry", "x", "y", "z", "sx", "sy"})
         dfTimeBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&"+str(self.channel)+"_pp>0.015&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
                                                                                 ).AsNumpy({str(self.channel)+"_t", "pm7_t"})
-        dfChannelBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&"+str(self.channel)+"_pp>0.015&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
-                                                                                ).AsNumpy({str(self.channel)+"_c"})
         trackLeaf = ["x", "y", "z", "sx", "sy"]
         TimeLeaf = [str(self.channel)+"_t", "pm7_t"]
-        ChannelLeaf = [str(self.channel)+"_c"]
         self.trackList = []
         self.TimeList = []
-        self.ChList = [] # THIS MAY NOT BE USED
         self.entryList = [np.array(v) for v in dfTrackBranches["entry"]]
         for leaf in trackLeaf:
             self.trackList.append([np.array(v) for v in dfTrackBranches[leaf]])
         for leaf in TimeLeaf:
             self.TimeList.append([np.array(v) for v in dfTimeBranches[leaf]])
-        for leaf in ChannelLeaf:
-            self.ChList.append([np.array(v) for v in dfChannelBranches[leaf]])
     def projectToWplane(self, height = 0):
         self.projectedX = np.array(self.trackList[0]) + height*np.array(self.trackList[3])
         self.projectedY = np.array(self.trackList[1]) + height*np.array(self.trackList[4])
-        
+    def compute_distance3D(self, Wpoint, Wangle):  
+        """compute distance using track and wire equations
+        Args:
+            Wpoint: point of the wire, coordinates [x,y,z]
+            Wangle: wire angle (deg)
+        """
+        tanX, tanY = np.array(self.trackList[3]), np.array(self.trackList[4])
+        Wvec = np.transpose(np.array([np.cos(Wangle*np.pi/180), np.sin(Wangle*np.pi/180), 0]).reshape(3,1) *np.ones((1, tanX.size)) )
+        Tvec = np.transpose(np.array([tanX, tanY, np.ones(tanX.size)]))
+        Wpoint = Wpoint.reshape(1,3)
+        Tpoint = np.array([self.projectedX, self.projectedY, np.zeros((self.projectedY).size)]).T
+        # NOTE: I assume z=0 for points of both wire and tracks
+        self.distance = np.abs(np.diag(np.matmul(np.cross(Wvec, Tvec),np.transpose(Tpoint-Wpoint))))
+
 class Distance:
     def __init__(self, _fname, _channel, _chargeThr):
         self.path = '/mnt/e/data/drift_chamber/'  ##MODIFY ACCORDING TO LOCAL MACHINE PATH
         self.fname = _fname
         self.channel = _channel#"dc"+str(_channel)
         self.chargeThr = _chargeThr  
+
     def import2RDF(self):
         df = ROOT.RDataFrame("tree", self.path + self.fname)
-        dfEntryBranches = df.AsNumpy({"entry"})
-        dfTrackBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5").AsNumpy({"entry", "x", "y", "z", "sx", "sy", "clX_pos.clY_pos", "clX_z", "clY_z"})
-        trackLeaf = ["x", "y", "z", "sx", "sy","clX_pos.clY_pos", "clX_z", "clY_z"]
-        self.entryList = [np.array(v) for v in dfEntryBranches["entry"]]
-        self.trackList = []
-        # for leaf in entryLeaf:
-        #     self.entryList.append([np.array(v) for v in dfTrackBranches[leaf]])
-        #even with this filter we go aout of memory, maybe need to work inside RDF?
+        cluster_filter = self.channel + "_c>" + str(self.chargeThr)+"&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
+        sigma_filter = "sigma>0.7"
+        
+        trk = df.Filter(cluster_filter).Define(
+                "m_fit", "Numba::fit_m(clY_z, clX_pos.clY_pos)"
+                ).Define(
+                "q_fit", "Numba::fit_q(clY_z, clX_pos.clY_pos, m_fit)"
+                ).Define(
+                "sigma", "Numba::sigma_fit(clY_z, clX_pos.clY_pos, m_fit, q_fit)"
+                )
+        new_trk = trk.Define(
+            "new_fit", "Numba::find_best_fit(clY_z, clX_pos.clY_pos, m_fit, q_fit, sigma)"
+            )
+        
+        plot_trk = False
+        if plot_trk:
+            trk1 = trk.Filter(sigma_filter).AsNumpy({"clY_z", "clX_pos.clY_pos", "m_fit", "q_fit"}) 
+            m = [np.array(v) for v in trk1["m_fit"]]
+            q = [np.array(v) for v in trk1["q_fit"]]
+            pos = [np.array(v) for v in trk1["clX_pos.clY_pos"]]
+            cly = [np.array(v) for v in trk1["clY_z"]]
+            pos = np.array(pos)
+            cly = np.array(cly)
+            m, q = np.array(m), np.array(q)
+            
+            new_trk1 = new_trk.Filter(sigma_filter).AsNumpy({"new_fit"}) 
+            new_par = [np.array(v) for v in new_trk1["new_fit"]]
+            new_par = np.concatenate(new_par).reshape(-1,4)
+        
+            plt.plot(pos, cly, '.', markersize=2)
+            idx = np.arange(0,5)
+            for i in range(60,67):
+                dots = plt.plot(pos[i].T, cly[i].T, 'o')
+                color = dots[0].get_color()
+                #plt.plot([m[i]*cly[i,0]+q[i], m[i]*cly[i,-1]+q[i]], [cly[i,0], cly[i,-1]], linestyle='--', color=color)
+                new_cly = np.take(cly[i], np.where(idx!=new_par[i,3])[0])
+                plt.plot([new_par[i,0]*new_cly[0]+new_par[i,1], new_par[i,0]*new_cly[-1]+new_par[i,1]], [new_cly[0], new_cly[-1]], linestyle='--', color=color)
+            plt.ylabel('h (cm)')
+            plt.xlabel('pos Y (cm)')
+            plt.show()
+        
+        plot_distr = True
+        if plot_distr:
+            trk2 = trk.AsNumpy({"m_fit", "sigma"})        
+            new_trk2 = new_trk.AsNumpy({"new_fit"})  
+            m = [np.array(v) for v in trk2["m_fit"]]
+            m = np.array(m)
+            sigma = [np.array(v) for v in trk2["sigma"]]
+            sigma = np.array(sigma)
+            new_par = [np.array(v) for v in new_trk2["new_fit"]]
+            new_par = np.concatenate(new_par).reshape(-1,4)
+            plt.figure("sigma")
+            bin_sigma1 = 200
+            bin_sigma2 = int(bin_sigma1 * (np.max(new_par[:,2])-np.min(new_par[:,2]))/(np.max(sigma)-np.min(sigma)))
+            #plt.hist(sigma, bin_sigma1, histtype='step', label='old')
+            plt.hist(new_par[:,2], bin_sigma2, histtype='step', label='new')
+            plt.yscale('log')
+            plt.xlabel('sigma (cm)')
+            # plt.legend()
+            plt.figure("Ytangent")
+            bin_tan1 = 200
+            bin_tan2 = int(bin_tan1 * (np.max(new_par[:,0])-np.min(new_par[:,0]))/(np.max(m)-np.min(m)))
+            plt.hist(m, bin_tan1, histtype='step', label='old')
+            plt.hist(new_par[:,0], bin_tan2, histtype='step', label='new')
+            plt.yscale('log')
+            plt.xlabel('tan YZ')
+            plt.legend()
+            plt.show()
