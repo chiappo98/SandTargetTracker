@@ -3,7 +3,7 @@ import numpy as np
 import argparse
 import json
 from scipy.optimize import curve_fit
-from tracks_and_wire_coordinates.hitPreprocessing import TimeDistance, Waveforms, Distance
+from hitPreprocessing import TimeDistance, Waveforms, Distance
 
 
 def findTime_Distance(hitFile, measureDict, channel, layer, plot=False):

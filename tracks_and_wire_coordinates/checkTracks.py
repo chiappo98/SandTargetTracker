@@ -2,7 +2,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 import argparse
 import json
-from tracks_and_wire_coordinates.hitPreprocessing import Distance
+from hitPreprocessing import Distance
 
 def fitTrack(hitFile, channel):
     d = Distance(hitFile, channel, 0.1e-10)

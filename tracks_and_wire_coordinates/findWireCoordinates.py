@@ -2,7 +2,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 import argparse
 import json
-from tracks_and_wire_coordinates.hitPreprocessing import TrackPosition
+from hitPreprocessing import TrackPosition
 
 def compute_distance(dot_x, dot_y, line_x, line_y):
     p1 = np.array([line_x[0], line_y[0]])

@@ -7,7 +7,7 @@ from numpy.linalg import norm
 import json
 import re
 # from numba import njit
-import tracks_and_wire_coordinates.utils as utils
+import utils as utils
 
 class Waveforms:
     def __init__(self, _channel):#, _chargeThr):
@@ -268,7 +268,7 @@ class Distance:
         
         # SAVE NEW RDF TO ROOT FILE, to be read in TimeDistance class
         
-        plot_trk = False
+        plot_trk = True
         if plot_trk:
             trk1 = trk.Filter(sigma_filter).AsNumpy({"clY_z", "clX_pos.clY_pos", "m_fit", "q_fit"}) 
             m = [np.array(v) for v in trk1["m_fit"]]
@@ -285,7 +285,7 @@ class Distance:
         
             plt.plot(pos, cly, '.', markersize=2)
             idx = np.arange(0,5)
-            for i in range(60,67):
+            for i in range(0,6):
                 dots = plt.plot(pos[i].T, cly[i].T, 'o')
                 color = dots[0].get_color()
                 #plt.plot([m[i]*cly[i,0]+q[i], m[i]*cly[i,-1]+q[i]], [cly[i,0], cly[i,-1]], linestyle='--', color=color)
@@ -295,7 +295,7 @@ class Distance:
             plt.xlabel('pos Y (cm)')
             plt.show()
         
-        plot_distr = True
+        plot_distr = False
         if plot_distr:
             trk2 = trk.AsNumpy({"m_fit", "sigma"})        
             new_trk2 = new_trk.AsNumpy({"new_fit"})  
