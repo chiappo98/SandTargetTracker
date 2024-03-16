@@ -266,6 +266,8 @@ class Distance:
             "new_fit", "Numba::find_best_fit(clY_z, clX_pos.clY_pos, m_fit, q_fit, sigma)"
             )
         
+        # SAVE NEW RDF TO ROOT FILE, to be read in TimeDistance class
+        
         plot_trk = False
         if plot_trk:
             trk1 = trk.Filter(sigma_filter).AsNumpy({"clY_z", "clX_pos.clY_pos", "m_fit", "q_fit"}) 
