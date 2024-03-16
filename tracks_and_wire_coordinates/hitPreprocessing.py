@@ -7,7 +7,7 @@ from numpy.linalg import norm
 import json
 import re
 # from numba import njit
-import utils
+import tracks_and_wire_coordinates.utils as utils
 
 class Waveforms:
     def __init__(self, _channel):#, _chargeThr):
