@@ -243,7 +243,7 @@ class TimeDistance:
         # NOTE: I assume z=0 for points of both wire and tracks
         self.distance = np.abs(np.diag(np.matmul(np.cross(Wvec, Tvec),np.transpose(Tpoint-Wpoint))))
 
-class Distance:
+class Tracks:
     def __init__(self, _fname, _channel, _chargeThr):
         self.path = '/mnt/e/data/drift_chamber/'  ##MODIFY ACCORDING TO LOCAL MACHINE PATH
         self.fname = _fname
@@ -256,68 +256,144 @@ class Distance:
         sigma_filter = "sigma>0.7"
         
         trk = df.Filter(cluster_filter).Define(
-                "m_fit", "Numba::fit_m(clY_z, clX_pos.clY_pos)"
-                ).Define(
-                "q_fit", "Numba::fit_q(clY_z, clX_pos.clY_pos, m_fit)"
-                ).Define(
-                "sigma", "Numba::sigma_fit(clY_z, clX_pos.clY_pos, m_fit, q_fit)"
+                "fit", "Numba::fit_track(clY_z, clX_pos.clY_pos)"
                 )
         new_trk = trk.Define(
-            "new_fit", "Numba::find_best_fit(clY_z, clX_pos.clY_pos, m_fit, q_fit, sigma)"
-            )
-        
+                "sigma", "Numba::select_col(fit, 2)"
+                ).Define(
+                "new_fit", "Numba::find_best_fit(clY_z, clX_pos.clY_pos, fit)"
+                )
+        double_trk = new_trk.Define(
+                "double_fit", "Numba::find_best_fit2(clY_z, clX_pos.clY_pos, fit)"
+                )
         # SAVE NEW RDF TO ROOT FILE, to be read in TimeDistance class
         
-        plot_trk = True
-        if plot_trk:
-            trk1 = trk.Filter(sigma_filter).AsNumpy({"clY_z", "clX_pos.clY_pos", "m_fit", "q_fit"}) 
-            m = [np.array(v) for v in trk1["m_fit"]]
-            q = [np.array(v) for v in trk1["q_fit"]]
+        plot_xy = True
+        if plot_xy:
+            proj_trk = double_trk.Define(
+                "double_m", "Numba::select_col(double_fit, 1)"
+                ).Define(
+                "double_q", "Numba::select_col(double_fit, 3)"
+                ).Define(
+                "projection", "Numba::project_track(107.3, double_m, double_q)"
+                ).AsNumpy({"projection"})
+
+            proj_y = [np.array(v) for v in proj_trk["projection"]]
+            self.proj_y = np.array(proj_y)
+        
+## Plot tracks and distributions
+        
+        plot_old_trk = False
+        plot_new_trk = True
+        plot_double = True
+        if plot_old_trk:
+            trk1 = new_trk.Filter(sigma_filter).AsNumpy({"clY_z", "clX_pos.clY_pos", "fit"})    
+                     
             pos = [np.array(v) for v in trk1["clX_pos.clY_pos"]]
             cly = [np.array(v) for v in trk1["clY_z"]]
+            par = [np.array(v) for v in trk1["fit"]]
             pos = np.array(pos)
             cly = np.array(cly)
-            m, q = np.array(m), np.array(q)
+            par = np.concatenate(par).reshape(-1,3)
             
-            new_trk1 = new_trk.Filter(sigma_filter).AsNumpy({"new_fit"}) 
-            new_par = [np.array(v) for v in new_trk1["new_fit"]]
-            new_par = np.concatenate(new_par).reshape(-1,4)
-        
             plt.plot(pos, cly, '.', markersize=2)
-            idx = np.arange(0,5)
             for i in range(0,6):
                 dots = plt.plot(pos[i].T, cly[i].T, 'o')
                 color = dots[0].get_color()
-                #plt.plot([m[i]*cly[i,0]+q[i], m[i]*cly[i,-1]+q[i]], [cly[i,0], cly[i,-1]], linestyle='--', color=color)
-                new_cly = np.take(cly[i], np.where(idx!=new_par[i,3])[0])
-                plt.plot([new_par[i,0]*new_cly[0]+new_par[i,1], new_par[i,0]*new_cly[-1]+new_par[i,1]], [new_cly[0], new_cly[-1]], linestyle='--', color=color)
+                plt.plot([par[i,0]*cly[i,0]+par[i,1], par[i,0]*cly[i,-1]+par[i,1]], [cly[i,0], cly[i,-1]], linestyle='--', color=color)
+            plt.ylabel('h (cm)')
+            plt.xlabel('pos Y (cm)')
+            plt.show()
+            
+        if plot_new_trk:
+            new_trk1 = new_trk.Filter(sigma_filter).AsNumpy({"clY_z", "clX_pos.clY_pos", "new_fit"}) 
+            
+            pos = [np.array(v) for v in new_trk1["clX_pos.clY_pos"]]
+            cly = [np.array(v) for v in new_trk1["clY_z"]]
+            new_par = [np.array(v) for v in new_trk1["new_fit"]]
+            pos = np.array(pos)
+            cly = np.array(cly)
+            new_par = np.concatenate(new_par).reshape(-1,3)
+        
+            plt.plot(pos, cly, '.', markersize=2)
+            for i in range(40,46):
+                dots = plt.plot(pos[i].T, cly[i].T, 'o')
+                color = dots[0].get_color()
+                plt.plot([new_par[i,0]*cly[i,0]+new_par[i,1], new_par[i,0]*cly[i,-1]+new_par[i,1]], [cly[i,0], cly[i,-1]], linestyle='--', color=color)
             plt.ylabel('h (cm)')
             plt.xlabel('pos Y (cm)')
             plt.show()
         
-        plot_distr = False
+        # if plot_double:
+            double_trk1 = double_trk.Filter(sigma_filter).AsNumpy({"double_fit"}) #"clY_z", "clX_pos.clY_pos", 
+            
+            # pos = [np.array(v) for v in double_trk1["clX_pos.clY_pos"]]
+            # cly = [np.array(v) for v in double_trk1["clY_z"]]
+            new_par = [np.array(v) for v in double_trk1["double_fit"]]
+            # pos = np.array(pos)
+            # cly = np.array(cly)
+            new_par = np.concatenate(new_par).reshape(-1,7)
+        
+            plt.plot(pos, cly, '.', markersize=2)
+            for i in range(40,46):
+                dots = plt.plot(pos[i].T, cly[i].T, 'o')
+                color = dots[0].get_color()
+                if new_par[i,0] == new_par[i,1]:
+                    plt.plot([new_par[i,0]*cly[i,0]+new_par[i,2], new_par[i,0]*cly[i,-1]+new_par[i,2]], [cly[i,0], cly[i,-1]], linestyle='--', color=color)
+                else:
+                    x1, x2 = cly[i, :int(new_par[i,6])+1], cly[i, int(new_par[i,6]):]
+                    plt.plot([new_par[i,0]*x1[0]+new_par[i,2], new_par[i,0]*x1[-1]+new_par[i,2]], [x1[0], x1[-1]], linestyle='--', color=color)
+                    plt.plot([new_par[i,1]*x2[0]+new_par[i,3], new_par[i,1]*x2[-1]+new_par[i,3]], [x2[0], x2[-1]], linestyle='--', color=color)           
+            plt.ylabel('h (cm)')
+            plt.xlabel('pos Y (cm)')
+            plt.show()
+        
+        plot_distr = True
         if plot_distr:
-            trk2 = trk.AsNumpy({"m_fit", "sigma"})        
-            new_trk2 = new_trk.AsNumpy({"new_fit"})  
-            m = [np.array(v) for v in trk2["m_fit"]]
-            m = np.array(m)
+            trk2 =new_trk.Define(
+                "m", "Numba::select_col(fit, 0)"
+                ).AsNumpy({"m", "sigma"})     
+            new_trk2 = new_trk.Define(
+                "new_sigma", "Numba::select_col(new_fit, 2)"
+                ).Define(
+                "new_m", "Numba::select_col(new_fit, 0)"
+                ).AsNumpy({"new_m", "new_sigma"})   
+            double_trk2 = double_trk.Define(
+                "double_sigma", "Numba::select_col(double_fit, 5)"
+                ).Define(
+                "double_m", "Numba::select_col(double_fit, 1)"
+                ).AsNumpy({"double_m", "double_sigma"})
+                
+            m = [np.array(v) for v in trk2["m"]]
             sigma = [np.array(v) for v in trk2["sigma"]]
+            new_m = [np.array(v) for v in new_trk2["new_m"]]
+            new_sigma = [np.array(v) for v in new_trk2["new_sigma"]]
+            double_m = [np.array(v) for v in double_trk2["double_m"]]
+            double_sigma = [np.array(v) for v in double_trk2["double_sigma"]]
+            m = np.array(m)
             sigma = np.array(sigma)
-            new_par = [np.array(v) for v in new_trk2["new_fit"]]
-            new_par = np.concatenate(new_par).reshape(-1,4)
+            new_m = np.array(new_m)
+            new_sigma = np.array(new_sigma)
+            double_m = np.array(double_m)
+            double_sigma = np.array(double_sigma)
+            
             plt.figure("sigma")
             bin_sigma1 = 200
-            bin_sigma2 = int(bin_sigma1 * (np.max(new_par[:,2])-np.min(new_par[:,2]))/(np.max(sigma)-np.min(sigma)))
-            #plt.hist(sigma, bin_sigma1, histtype='step', label='old')
-            plt.hist(new_par[:,2], bin_sigma2, histtype='step', label='new')
+            bin_sigma2 = int(bin_sigma1 * (np.max(new_sigma)-np.min(new_sigma))/(np.max(sigma)-np.min(sigma)))
+            bin_sigma3 = int(bin_sigma1 * (np.max(double_sigma)-np.min(double_sigma))/(np.max(sigma)-np.min(sigma)))
+            plt.hist(sigma, bin_sigma1, histtype='step', label='old')
+            plt.hist(new_sigma, bin_sigma2, histtype='step', label='new')
+            plt.hist(double_sigma, bin_sigma3, histtype='step', label='new')
             plt.yscale('log')
             plt.xlabel('sigma (cm)')
-            # plt.legend()
+            plt.legend()
             plt.figure("Ytangent")
             bin_tan1 = 200
-            bin_tan2 = int(bin_tan1 * (np.max(new_par[:,0])-np.min(new_par[:,0]))/(np.max(m)-np.min(m)))
+            bin_tan2 = int(bin_tan1 * (np.max(new_m)-np.min(new_m))/(np.max(m)-np.min(m)))
+            bin_tan3 = int(bin_tan1 * (np.max(double_m)-np.min(double_m))/(np.max(m)-np.min(m)))
             plt.hist(m, bin_tan1, histtype='step', label='old')
-            plt.hist(new_par[:,0], bin_tan2, histtype='step', label='new')
+            plt.hist(new_m, bin_tan2, histtype='step', label='new')
+            plt.hist(double_m, bin_tan3, histtype='step', label='new')
             plt.yscale('log')
             plt.xlabel('tan YZ')
             plt.legend()
