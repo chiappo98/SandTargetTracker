@@ -247,13 +247,13 @@ class Tracks:
     def __init__(self, _fname, _channel, _chargeThr):
         self.path = '/mnt/e/data/drift_chamber/'  ##MODIFY ACCORDING TO LOCAL MACHINE PATH
         self.fname = _fname
-        self.channel = _channel#"dc"+str(_channel)
+        self.channel = _channel
         self.chargeThr = _chargeThr  
 
     def import2RDF(self):
         df = ROOT.RDataFrame("tree", self.path + self.fname)
         cluster_filter = self.channel + "_c>" + str(self.chargeThr)+"&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
-        sigma_filter = "sigma>0.7"
+        sigma_filter = "sigma>0.5&&sigma<0.7"
         
         trk = df.Filter(cluster_filter).Define(
                 "fit", "Numba::fit_track(clY_z, clX_pos.clY_pos)"
@@ -266,7 +266,6 @@ class Tracks:
         double_trk = new_trk.Define(
                 "double_fit", "Numba::find_best_fit2(clY_z, clX_pos.clY_pos, fit)"
                 )
-        # SAVE NEW RDF TO ROOT FILE, to be read in TimeDistance class
         
         plot_xy = True
         if plot_xy:
@@ -280,11 +279,13 @@ class Tracks:
 
             proj_y = [np.array(v) for v in proj_trk["projection"]]
             self.proj_y = np.array(proj_y)
-        
+        saveRDF = False
+        if saveRDF:
+            proj_trk.Snapshot("tree", "fitted_tracks.root");     
 ## Plot tracks and distributions
-        
+        run_i, run_f = 40,46
         plot_old_trk = False
-        plot_new_trk = True
+        plot_new_trk = False
         plot_double = True
         if plot_old_trk:
             trk1 = new_trk.Filter(sigma_filter).AsNumpy({"clY_z", "clX_pos.clY_pos", "fit"})    
@@ -297,7 +298,7 @@ class Tracks:
             par = np.concatenate(par).reshape(-1,3)
             
             plt.plot(pos, cly, '.', markersize=2)
-            for i in range(0,6):
+            for i in range(run_i, run_f):
                 dots = plt.plot(pos[i].T, cly[i].T, 'o')
                 color = dots[0].get_color()
                 plt.plot([par[i,0]*cly[i,0]+par[i,1], par[i,0]*cly[i,-1]+par[i,1]], [cly[i,0], cly[i,-1]], linestyle='--', color=color)
@@ -316,7 +317,7 @@ class Tracks:
             new_par = np.concatenate(new_par).reshape(-1,3)
         
             plt.plot(pos, cly, '.', markersize=2)
-            for i in range(40,46):
+            for i in range(run_i, run_f):
                 dots = plt.plot(pos[i].T, cly[i].T, 'o')
                 color = dots[0].get_color()
                 plt.plot([new_par[i,0]*cly[i,0]+new_par[i,1], new_par[i,0]*cly[i,-1]+new_par[i,1]], [cly[i,0], cly[i,-1]], linestyle='--', color=color)
@@ -324,31 +325,31 @@ class Tracks:
             plt.xlabel('pos Y (cm)')
             plt.show()
         
-        # if plot_double:
-            double_trk1 = double_trk.Filter(sigma_filter).AsNumpy({"double_fit"}) #"clY_z", "clX_pos.clY_pos", 
+        if plot_double:
+            double_trk1 = double_trk.Filter(sigma_filter).AsNumpy({"clY_z", "clX_pos.clY_pos", "double_fit"}) #"clY_z", "clX_pos.clY_pos", 
             
-            # pos = [np.array(v) for v in double_trk1["clX_pos.clY_pos"]]
-            # cly = [np.array(v) for v in double_trk1["clY_z"]]
+            pos = [np.array(v) for v in double_trk1["clX_pos.clY_pos"]]
+            cly = [np.array(v) for v in double_trk1["clY_z"]]
             new_par = [np.array(v) for v in double_trk1["double_fit"]]
-            # pos = np.array(pos)
-            # cly = np.array(cly)
-            new_par = np.concatenate(new_par).reshape(-1,7)
+            pos = np.array(pos)
+            cly = np.array(cly)
+            new_par = np.concatenate(new_par).reshape(-1,6)
         
             plt.plot(pos, cly, '.', markersize=2)
-            for i in range(40,46):
+            for i in range(run_i, run_f):
                 dots = plt.plot(pos[i].T, cly[i].T, 'o')
                 color = dots[0].get_color()
                 if new_par[i,0] == new_par[i,1]:
                     plt.plot([new_par[i,0]*cly[i,0]+new_par[i,2], new_par[i,0]*cly[i,-1]+new_par[i,2]], [cly[i,0], cly[i,-1]], linestyle='--', color=color)
                 else:
-                    x1, x2 = cly[i, :int(new_par[i,6])+1], cly[i, int(new_par[i,6]):]
+                    x1, x2 = cly[i, :int(new_par[i,5])+1], cly[i, int(new_par[i,5]):]
                     plt.plot([new_par[i,0]*x1[0]+new_par[i,2], new_par[i,0]*x1[-1]+new_par[i,2]], [x1[0], x1[-1]], linestyle='--', color=color)
                     plt.plot([new_par[i,1]*x2[0]+new_par[i,3], new_par[i,1]*x2[-1]+new_par[i,3]], [x2[0], x2[-1]], linestyle='--', color=color)           
             plt.ylabel('h (cm)')
             plt.xlabel('pos Y (cm)')
             plt.show()
         
-        plot_distr = True
+        plot_distr = False
         if plot_distr:
             trk2 =new_trk.Define(
                 "m", "Numba::select_col(fit, 0)"
@@ -359,7 +360,7 @@ class Tracks:
                 "new_m", "Numba::select_col(new_fit, 0)"
                 ).AsNumpy({"new_m", "new_sigma"})   
             double_trk2 = double_trk.Define(
-                "double_sigma", "Numba::select_col(double_fit, 5)"
+                "double_sigma", "Numba::select_col(double_fit, 4)"
                 ).Define(
                 "double_m", "Numba::select_col(double_fit, 1)"
                 ).AsNumpy({"double_m", "double_sigma"})
