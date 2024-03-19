@@ -313,10 +313,12 @@ class Tracks:
             proj_trk.Snapshot("tree", "fitted_tracks.root");     
             
 ## Plot tracks and distributions
+
         run_i, run_f = 0,6
         plot_old_trk = False
         plot_new_trk = False
         plot_double = False
+        plot_largeM = True
         plot_distr = False
         if plot_old_trk:
             trk1 = new_trk.Filter(sigma_filter).AsNumpy({"clX_z", "clY_z", "clX_pos.clY_pos", "clY_pos", "fitX", "fitY"})    
@@ -404,6 +406,60 @@ class Tracks:
             
             plt.figure("y view")
             plt.plot(posy, cly, '.', markersize=2)
+            for i in range(run_i, run_f):
+                dots = plt.plot(posy[i].T, cly[i].T, 'o')
+                color = dots[0].get_color()
+                if new_pary[i,0] == new_pary[i,1]:
+                    plt.plot([new_pary[i,0]*cly[i,0]+new_pary[i,2], new_pary[i,0]*cly[i,-1]+new_pary[i,2]], [cly[i,0], cly[i,-1]], linestyle='--', color=color)
+                else:
+                    x1, x2 = cly[i, :int(new_pary[i,5])+1], cly[i, int(new_pary[i,5]):]
+                    plt.plot([new_pary[i,0]*x1[0]+new_pary[i,2], new_pary[i,0]*x1[-1]+new_pary[i,2]], [x1[0], x1[-1]], linestyle='--', color=color)
+                    plt.plot([new_pary[i,1]*x2[0]+new_pary[i,3], new_pary[i,1]*x2[-1]+new_pary[i,3]], [x2[0], x2[-1]], linestyle='--', color=color)           
+            plt.ylabel('h (cm)')
+            plt.xlabel('pos Y (cm)')
+            plt.show()
+            
+        if plot_largeM:
+            m_filter = "double_mX<-0.4|double_mX>0.4|double_mY<-0.4|double_mY>0.4"
+            ext_trk = double_trk.Define(
+                "double_sigmaX", "Numba::select_col(double_fitX, 4)"
+                ).Define(
+                "double_sigmaY", "Numba::select_col(double_fitY, 4)"
+                ).Define(
+                "double_mX", "Numba::select_col(double_fitX, 1)"
+                ).Define(
+                "double_mY", "Numba::select_col(double_fitY, 1)"
+                ).Filter(m_filter).AsNumpy({"clX_z", "clY_z", "clX_pos.clY_pos", "clY_pos", "double_fitX", "double_fitY"}) 
+                    
+            posx = [np.array(v) for v in ext_trk["clX_pos.clY_pos"]]
+            posy = [np.array(v) for v in ext_trk["clY_pos"]]
+            clx = [np.array(v) for v in ext_trk["clX_z"]]
+            cly = [np.array(v) for v in ext_trk["clY_z"]]
+            new_parx = [np.array(v) for v in ext_trk["double_fitX"]]
+            new_pary = [np.array(v) for v in ext_trk["double_fitY"]]
+            posx = np.array(posx)
+            posy = np.array(posy)
+            clx = np.array(clx)
+            cly = np.array(cly)
+            new_parx = np.concatenate(new_parx).reshape(-1,6)
+            new_pary = np.concatenate(new_pary).reshape(-1,6)
+        
+            plt.figure("x view")
+            # plt.plot(posx, clx, '.', markersize=2)
+            for i in range(run_i, run_f):
+                dots = plt.plot(posx[i].T, clx[i].T, 'o')
+                color = dots[0].get_color()
+                if new_parx[i,0] == new_parx[i,1]:
+                    plt.plot([new_parx[i,0]*clx[i,0]+new_parx[i,2], new_parx[i,0]*clx[i,-1]+new_parx[i,2]], [clx[i,0], clx[i,-1]], linestyle='--', color=color)
+                else:
+                    x1, x2 = clx[i, :int(new_parx[i,5])+1], clx[i, int(new_parx[i,5]):]
+                    plt.plot([new_parx[i,0]*x1[0]+new_parx[i,2], new_parx[i,0]*x1[-1]+new_parx[i,2]], [x1[0], x1[-1]], linestyle='--', color=color)
+                    plt.plot([new_parx[i,1]*x2[0]+new_parx[i,3], new_parx[i,1]*x2[-1]+new_parx[i,3]], [x2[0], x2[-1]], linestyle='--', color=color)           
+            plt.ylabel('h (cm)')
+            plt.xlabel('pos X (cm)')
+            
+            plt.figure("y view")
+            # plt.plot(posy, cly, '.', markersize=2)
             for i in range(run_i, run_f):
                 dots = plt.plot(posy[i].T, cly[i].T, 'o')
                 color = dots[0].get_color()
