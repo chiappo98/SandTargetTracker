@@ -289,20 +289,35 @@ class Tracks:
                 "projectionX", "Numba::project_track(107.3, double_mX, double_qX)"
                 ).Define(
                 "projectionY", "Numba::project_track(107.3, double_mY, double_qY)"
-                ).AsNumpy({"projectionX", "projectionY"})
+                ).AsNumpy({"projectionX", "projectionY", "double_mX", "double_mY", "x", "y", "sx", "sy"})
 
             proj_x = [np.array(v) for v in proj_trk["projectionX"]]
             proj_y = [np.array(v) for v in proj_trk["projectionY"]]
+            tan_x = [np.array(v) for v in proj_trk["double_mX"]]
+            tan_y = [np.array(v) for v in proj_trk["double_mY"]]
+            x = [np.array(v) for v in proj_trk["x"]]
+            y = [np.array(v) for v in proj_trk["y"]]
+            sx = [np.array(v) for v in proj_trk["sx"]]
+            sy = [np.array(v) for v in proj_trk["sy"]]
             self.proj_x = np.array(proj_x)
             self.proj_y = np.array(proj_y)
+            self.tan_x = np.array(tan_x)
+            self.tan_y = np.array(tan_y)
+            self.x = np.array(x)
+            self.y = np.array(y)
+            self.sx = np.array(sx)
+            self.sy = np.array(sy)
+            
         saveRDF = False
         if saveRDF:
             proj_trk.Snapshot("tree", "fitted_tracks.root");     
+            
 ## Plot tracks and distributions
         run_i, run_f = 0,6
-        plot_old_trk = True
+        plot_old_trk = False
         plot_new_trk = False
-        plot_double = True
+        plot_double = False
+        plot_distr = False
         if plot_old_trk:
             trk1 = new_trk.Filter(sigma_filter).AsNumpy({"clX_z", "clY_z", "clX_pos.clY_pos", "clY_pos", "fitX", "fitY"})    
                      
@@ -402,7 +417,6 @@ class Tracks:
             plt.xlabel('pos Y (cm)')
             plt.show()
         
-        plot_distr = True
         if plot_distr:
             trk2 =new_trk.Define(
                 "mx", "Numba::select_col(fitX, 0)"
