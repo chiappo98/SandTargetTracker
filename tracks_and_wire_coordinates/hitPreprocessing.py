@@ -250,55 +250,81 @@ class Tracks:
         self.channel = _channel
         self.chargeThr = _chargeThr  
 
-    def import2RDF(self):
+    def import2RDF(self, method):
         df = ROOT.RDataFrame("tree", self.path + self.fname)
         cluster_filter = self.channel + "_c>" + str(self.chargeThr)+"&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
-        sigma_filter = "sigmaX>0.7&&sigmaY>0.7" #"sigmaX>0.5&&sigmaX<0.7&&sigmaY>0.5&&sigmaY<0.7"
+        all_wires_filter = "nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
+        sigma_filter = "sigmaX>0.7&&sigmaY>0.7" 
+        index_filter = "Xindex!=3&&Yindex!=3&&Xindex!=-4&&Yindex!=-4"  #HAVE TO ACCOUNT ALSO FOR EXCLUDED DOTS (NOT EXCLUDING THEM!)
+        tan_filter = "tx>-0.4&&tx<0.4&&ty>-0.4&&ty<0.4"
         
-        trk = df.Filter(cluster_filter).Define(
+        match method:
+            case "all_wires":
+                method_filter = all_wires_filter
+                plot_old_trk = False
+                plot_double = False
+                plot_largeM = False
+                plot_distr = True
+                plot_xy = False
+                saveRDF = True
+            case "single_wire":
+                method_filter = cluster_filter
+                plot_old_trk = False
+                #plot_new_trk = False
+                plot_double = False
+                plot_largeM = False
+                plot_distr = True
+                plot_xy = True
+                saveRDF = False
+        
+        trk = df.Filter(method_filter).Define(
                 "fitX", "Numba::fit_track(clX_z, clX_pos.clY_pos)"
                 ).Define(
                 "fitY", "Numba::fit_track(clY_z, clY_pos)"
-                )
-        new_trk = trk.Define(
+                ).Define(
                 "sigmaX", "Numba::select_col(fitX, 2)"
                 ).Define(
                 "sigmaY", "Numba::select_col(fitY, 2)"
-                ).Define(
-                "new_fitX", "Numba::find_best_fit(clX_z, clX_pos.clY_pos, fitX)"
-                ).Define(
-                "new_fitY", "Numba::find_best_fit(clY_z, clY_pos, fitY)"
                 )
-        double_trk = new_trk.Define(
+        # new_trk = trk.Define(
+        #         "new_fitX", "Numba::find_best_fit(clX_z, clX_pos.clY_pos, fitX)"
+        #         ).Define(
+        #         "new_fitY", "Numba::find_best_fit(clY_z, clY_pos, fitY)"
+        #         )
+        double_trk = trk.Define(
                 "double_fitX", "Numba::find_best_fit2(clX_z, clX_pos.clY_pos, fitX)"
                 ).Define(
                 "double_fitY", "Numba::find_best_fit2(clY_z, clY_pos, fitY)"
                 )
-        
-        plot_xy = True
+        proj_trk = double_trk.Define(
+            "tx", "Numba::select_col(double_fitX, 1)"
+            ).Define(
+            "ty", "Numba::select_col(double_fitY, 1)"
+            ).Define(
+            "double_qX", "Numba::select_col(double_fitX, 3)"
+            ).Define(
+            "double_qY", "Numba::select_col(double_fitY, 3)"
+            ).Define(
+            "projectionX", "Numba::project_track(107.3, tx, double_qX)"
+            ).Define(
+            "projectionY", "Numba::project_track(107.3, ty, double_qY)"
+            ).Define(
+            "Xindex", "Numba::select_col(double_fitX, 5)"
+            ).Define(
+            "Yindex", "Numba::select_col(double_fitY, 5)"
+            )
+        if saveRDF:
+            proj_trk.Snapshot("tree", "tracks_run350_839.root",{"entry", "x", "y", "tx", "ty", "projectionX", "projectionY", "Xindex", "Yindex"});    
         if plot_xy:
-            proj_trk = double_trk.Define(
-                "double_mX", "Numba::select_col(double_fitX, 1)"
-                ).Define(
-                "double_mY", "Numba::select_col(double_fitY, 1)"
-                ).Define(
-                "double_qX", "Numba::select_col(double_fitX, 3)"
-                ).Define(
-                "double_qY", "Numba::select_col(double_fitY, 3)"
-                ).Define(
-                "projectionX", "Numba::project_track(107.3, double_mX, double_qX)"
-                ).Define(
-                "projectionY", "Numba::project_track(107.3, double_mY, double_qY)"
-                ).AsNumpy({"projectionX", "projectionY", "double_mX", "double_mY", "x", "y", "sx", "sy"})
-
-            proj_x = [np.array(v) for v in proj_trk["projectionX"]]
-            proj_y = [np.array(v) for v in proj_trk["projectionY"]]
-            tan_x = [np.array(v) for v in proj_trk["double_mX"]]
-            tan_y = [np.array(v) for v in proj_trk["double_mY"]]
-            x = [np.array(v) for v in proj_trk["x"]]
-            y = [np.array(v) for v in proj_trk["y"]]
-            sx = [np.array(v) for v in proj_trk["sx"]]
-            sy = [np.array(v) for v in proj_trk["sy"]]
+            proj_trk1 = proj_trk.Filter(index_filter).AsNumpy({"projectionX", "projectionY", "tx", "ty", "x", "y", "sx", "sy"})
+            proj_x = [np.array(v) for v in proj_trk1["projectionX"]]
+            proj_y = [np.array(v) for v in proj_trk1["projectionY"]]
+            tan_x = [np.array(v) for v in proj_trk1["tx"]]
+            tan_y = [np.array(v) for v in proj_trk1["ty"]]
+            x = [np.array(v) for v in proj_trk1["x"]]
+            y = [np.array(v) for v in proj_trk1["y"]]
+            sx = [np.array(v) for v in proj_trk1["sx"]]
+            sy = [np.array(v) for v in proj_trk1["sy"]]
             self.proj_x = np.array(proj_x)
             self.proj_y = np.array(proj_y)
             self.tan_x = np.array(tan_x)
@@ -306,22 +332,14 @@ class Tracks:
             self.x = np.array(x)
             self.y = np.array(y)
             self.sx = np.array(sx)
-            self.sy = np.array(sy)
-            
-        saveRDF = False
-        if saveRDF:
-            proj_trk.Snapshot("tree", "fitted_tracks.root");     
+            self.sy = np.array(sy) 
             
 ## Plot tracks and distributions
 
-        run_i, run_f = 0,6
-        plot_old_trk = False
-        plot_new_trk = False
-        plot_double = False
-        plot_largeM = True
-        plot_distr = False
+        run_i, run_f = 0,7
+
         if plot_old_trk:
-            trk1 = new_trk.Filter(sigma_filter).AsNumpy({"clX_z", "clY_z", "clX_pos.clY_pos", "clY_pos", "fitX", "fitY"})    
+            trk1 = trk.Filter(sigma_filter).AsNumpy({"clX_z", "clY_z", "clX_pos.clY_pos", "clY_pos", "fitX", "fitY"})    
                      
             posx = [np.array(v) for v in trk1["clX_pos.clY_pos"]]
             posy = [np.array(v) for v in trk1["clY_pos"]]
@@ -355,24 +373,24 @@ class Tracks:
             plt.xlabel('pos Y (cm)')
             plt.show()
             
-        if plot_new_trk:
-            new_trk1 = new_trk.Filter(sigma_filter).AsNumpy({"clY_z", "clX_pos.clY_pos", "new_fit"}) 
+        # if plot_new_trk:
+        #     new_trk1 = new_trk.Filter(sigma_filter).AsNumpy({"clY_z", "clX_pos.clY_pos", "new_fit"}) 
             
-            pos = [np.array(v) for v in new_trk1["clX_pos.clY_pos"]]
-            cly = [np.array(v) for v in new_trk1["clY_z"]]
-            new_par = [np.array(v) for v in new_trk1["new_fit"]]
-            pos = np.array(pos)
-            cly = np.array(cly)
-            new_par = np.concatenate(new_par).reshape(-1,3)
+        #     pos = [np.array(v) for v in new_trk1["clX_pos.clY_pos"]]
+        #     cly = [np.array(v) for v in new_trk1["clY_z"]]
+        #     new_par = [np.array(v) for v in new_trk1["new_fit"]]
+        #     pos = np.array(pos)
+        #     cly = np.array(cly)
+        #     new_par = np.concatenate(new_par).reshape(-1,3)
         
-            plt.plot(pos, cly, '.', markersize=2)
-            for i in range(run_i, run_f):
-                dots = plt.plot(pos[i].T, cly[i].T, 'o')
-                color = dots[0].get_color()
-                plt.plot([new_par[i,0]*cly[i,0]+new_par[i,1], new_par[i,0]*cly[i,-1]+new_par[i,1]], [cly[i,0], cly[i,-1]], linestyle='--', color=color)
-            plt.ylabel('h (cm)')
-            plt.xlabel('pos Y (cm)')
-            plt.show()
+        #     plt.plot(pos, cly, '.', markersize=2)
+        #     for i in range(run_i, run_f):
+        #         dots = plt.plot(pos[i].T, cly[i].T, 'o')
+        #         color = dots[0].get_color()
+        #         plt.plot([new_par[i,0]*cly[i,0]+new_par[i,1], new_par[i,0]*cly[i,-1]+new_par[i,1]], [cly[i,0], cly[i,-1]], linestyle='--', color=color)
+        #     plt.ylabel('h (cm)')
+        #     plt.xlabel('pos Y (cm)')
+        #     plt.show()
         
         if plot_double:
             double_trk1 = double_trk.Filter(sigma_filter).AsNumpy({"clX_z", "clY_z", "clX_pos.clY_pos", "clY_pos", "double_fitX", "double_fitY"}) 
@@ -420,15 +438,15 @@ class Tracks:
             plt.show()
             
         if plot_largeM:
-            m_filter = "double_mX<-0.4|double_mX>0.4|double_mY<-0.4|double_mY>0.4"
+            m_filter = "ty<-0.2|ty>0.2" #"tx<-0.4|tx>0.4|ty<-0.4|ty>0.4"
             ext_trk = double_trk.Define(
                 "double_sigmaX", "Numba::select_col(double_fitX, 4)"
                 ).Define(
                 "double_sigmaY", "Numba::select_col(double_fitY, 4)"
                 ).Define(
-                "double_mX", "Numba::select_col(double_fitX, 1)"
+                "tx", "Numba::select_col(double_fitX, 1)"
                 ).Define(
-                "double_mY", "Numba::select_col(double_fitY, 1)"
+                "ty", "Numba::select_col(double_fitY, 1)"
                 ).Filter(m_filter).AsNumpy({"clX_z", "clY_z", "clX_pos.clY_pos", "clY_pos", "double_fitX", "double_fitY"}) 
                     
             posx = [np.array(v) for v in ext_trk["clX_pos.clY_pos"]]
@@ -474,7 +492,7 @@ class Tracks:
             plt.show()
         
         if plot_distr:
-            trk2 =new_trk.Define(
+            trk2 =trk.Define(
                 "mx", "Numba::select_col(fitX, 0)"
                 ).Define(
                 "my", "Numba::select_col(fitY, 0)"
@@ -489,10 +507,14 @@ class Tracks:
                 ).Define(
                 "double_sigmaY", "Numba::select_col(double_fitY, 4)"
                 ).Define(
-                "double_mX", "Numba::select_col(double_fitX, 1)"
+                "tx", "Numba::select_col(double_fitX, 1)"
                 ).Define(
-                "double_mY", "Numba::select_col(double_fitY, 1)"
-                ).AsNumpy({"double_mX", "double_mY", "double_sigmaX", "double_sigmaY"})
+                "ty", "Numba::select_col(double_fitY, 1)"
+                ).Define(
+                "Xindex", "Numba::select_col(double_fitX, 5)"
+                ).Define(
+                "Yindex", "Numba::select_col(double_fitY, 5)"
+                ).Filter(index_filter).AsNumpy({"tx", "ty", "double_sigmaX", "double_sigmaY"})
                 
             mx = [np.array(v) for v in trk2["mx"]]
             my = [np.array(v) for v in trk2["my"]]
@@ -500,8 +522,8 @@ class Tracks:
             sigmay = [np.array(v) for v in trk2["sigmaY"]]
             # new_m = [np.array(v) for v in new_trk2["new_m"]]
             # new_sigma = [np.array(v) for v in new_trk2["new_sigma"]]
-            double_mx = [np.array(v) for v in double_trk2["double_mX"]]
-            double_my = [np.array(v) for v in double_trk2["double_mY"]]
+            double_mx = [np.array(v) for v in double_trk2["tx"]]
+            double_my = [np.array(v) for v in double_trk2["ty"]]
             double_sigmax = [np.array(v) for v in double_trk2["double_sigmaX"]]
             double_sigmay = [np.array(v) for v in double_trk2["double_sigmaY"]]
             mx = np.array(mx)

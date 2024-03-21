@@ -1,5 +1,5 @@
 import numpy as np
-from numba import jit, njit
+from numba import njit
 import ROOT
 
 
@@ -47,17 +47,23 @@ def fit_poly(x, y, deg):
 @njit
 def nb_curve_fit(x,y):
     par = fit_poly(x,y,1)
+    #THE FOLLOWING PART SEEMS TO BE USED ONLY BY find_best_fit 
     if x.size > 2:
         sigma = np.sqrt(np.sum((y - par[0]*x - par[1])**2)/(x.size - 2))
     else:
-        sigma = np.sqrt(np.sum((y - par[0]*x - par[1])**2))
+        sigma = 0 #np.sqrt(np.sum((y - par[0]*x - par[1])**2))
     return np.array([par[0], par[1], sigma])
 
 @njit
 def double_sigma(x, y, par1, par2, i):
-    var1 = np.sum((y[:i+1] - par1[0]*x[:i+1] - par1[1])**2)
-    var2 = np.sum((y[i:] - par2[0]*x[i:] - par2[1])**2)
-    return np.sqrt((var1+var2)/(x.size - 2))
+    if i == 1:
+        return np.sqrt(np.sum((y[i:] - par2[0]*x[i:] - par2[1])**2)/(x[i:].size - 2))
+    elif i == 3:
+        return np.sqrt(np.sum((y[:i+1] - par2[0]*x[:i+1] - par2[1])**2)/(x[:i+1].size - 2))
+    else:
+        var1 = np.sum((y[:i+1] - par1[0]*x[:i+1] - par1[1])**2)
+        var2 = np.sum((y[i:] - par2[0]*x[i:] - par2[1])**2)
+        return np.sqrt((var1+var2)/(x.size - 2))
     
 @ROOT.Numba.Declare(['RVec<double>', 'RVec<double>'], 'RVec<double>')
 def fit_track(clY_z, pos):
@@ -94,7 +100,7 @@ def find_best_fit(clY_z, pos, fit_par):
 @ROOT.Numba.Declare(['RVec<double>', 'RVec<double>', 'RVec<double>'], 'RVec<double>')
 def find_best_fit2(clY_z, pos, fit_par):
     idx = np.arange(0,5)
-    new_fit_par = np.array([fit_par[0], fit_par[0], fit_par[1], fit_par[1], fit_par[2], 0])
+    new_fit_par = np.array([fit_par[0], fit_par[0], fit_par[1], fit_par[1], fit_par[2], -5]) #set to -1 to avoid confusion
     
     if fit_par[2] > 0.2:
         for i in range(5):
@@ -102,9 +108,9 @@ def find_best_fit2(clY_z, pos, fit_par):
             p = np.take(pos, np.where(idx!=i)[0])
             tmp_par = nb_curve_fit(y, p)
             if tmp_par[2]<new_fit_par[4]:
-                new_fit_par = np.array([tmp_par[0], tmp_par[0], tmp_par[1], tmp_par[1], tmp_par[2], i])
+                new_fit_par = np.array([tmp_par[0], tmp_par[0], tmp_par[1], tmp_par[1], tmp_par[2], -i])
            
-            if i!=4 or i!=0:
+            if i!=4 and i!=0: #or
                 tmp_par1 = nb_curve_fit(clY_z[:i+1], pos[:i+1])
                 tmp_par2 = nb_curve_fit(clY_z[i:], pos[i:])
                 tmp_sigma = double_sigma(clY_z, pos, tmp_par1, tmp_par2, i)
