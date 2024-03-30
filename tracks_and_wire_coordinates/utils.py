@@ -73,9 +73,15 @@ def fit_track(clY_z, pos):
 def select_col(ndarr, n):
     return ndarr[n]
 
+
 @ROOT.Numba.Declare(['double', 'double', 'double'], 'double')
 def project_track(x, m, q):
     return m*x+q
+
+#NB: TO BE DELETED
+@ROOT.Numba.Declare(['double'], 'double')
+def redefine_z(z):
+    return z#-14.4
 
 @ROOT.Numba.Declare(['RVec<double>', 'RVec<double>', 'RVec<double>'], 'RVec<double>')
 def find_best_fit(clY_z, pos, fit_par):
@@ -100,9 +106,9 @@ def find_best_fit(clY_z, pos, fit_par):
 @ROOT.Numba.Declare(['RVec<double>', 'RVec<double>', 'RVec<double>'], 'RVec<double>')
 def find_best_fit2(clY_z, pos, fit_par):
     idx = np.arange(0,5)
-    new_fit_par = np.array([fit_par[0], fit_par[0], fit_par[1], fit_par[1], fit_par[2], -5]) #set to -1 to avoid confusion
+    new_fit_par = np.array([fit_par[0], fit_par[0], fit_par[1], fit_par[1], fit_par[2], -5]) #set to -5 to avoid confusion
     
-    if fit_par[2] > 0.2:
+    if fit_par[2] > 0.2:  # TRY LOWER VALUE?
         for i in range(5):
             y = np.take(clY_z, np.where(idx!=i)[0])
             p = np.take(pos, np.where(idx!=i)[0])
@@ -110,7 +116,7 @@ def find_best_fit2(clY_z, pos, fit_par):
             if tmp_par[2]<new_fit_par[4]:
                 new_fit_par = np.array([tmp_par[0], tmp_par[0], tmp_par[1], tmp_par[1], tmp_par[2], -i])
            
-            if i!=4 and i!=0: #or
+            if i!=4 and i!=0:
                 tmp_par1 = nb_curve_fit(clY_z[:i+1], pos[:i+1])
                 tmp_par2 = nb_curve_fit(clY_z[i:], pos[i:])
                 tmp_sigma = double_sigma(clY_z, pos, tmp_par1, tmp_par2, i)

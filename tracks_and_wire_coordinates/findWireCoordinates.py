@@ -77,10 +77,10 @@ def findXYZ(hitFile, coordinateFile, channel, plane, plotZSigma=False, plotProfi
         wire height(wrt TTree height), angle, intercept and sigma
     """
     tracks = TrackPosition(hitFile, channel, 0.02e-9, 0.02) 
-    tracks.import2RDF("charge")
-    tracks.readZmeasures(coordinateFile)
+    tracks.import2RDF("new_tracks") #charge
+    tracks.readZmeasures("../"+coordinateFile)
     hTracker = np.mean(tracks.trackList[2])
-    height = np.arange(-3, 12, 0.3) + tracks.hplanes[plane] #-6
+    height = np.arange(-6, 12, 0.3) + tracks.hplanes[plane] #-6
     for h in height:
         tracks.projectToWplane(h)
         tracks.pca()
@@ -229,20 +229,20 @@ if __name__ == "__main__":
                 h, angle, position, posErr= [], [], [], []
                 print(layer[l])
                 for ch in channel[l]:
-                    hTracker, values = findXYZ(args.rootFile, args.coordFile, ch, plane[l])
+                    hTracker, values = findXYZ(args.rootFile, args.coordFile, ch, plane[l], plotZSigma=False, plotProfile=False)
                     layer_dict[ch] = dict(zip(coord, values))
                     print(ch, values[0]+hTracker, values[1:])
                     h.append(values[0])
                     angle.append(values[1])
-                    # position.append(values[2][0])
-                    # posErr.append(values[2][1])
                 output_dict[layer[l]] = layer_dict
                 print("height:", np.mean(np.array(h)), '+/-',np.std(np.array(h)))
                 print("angle:", np.mean(np.array(angle)), '+/-',np.std(np.array(angle)))
-                # print("intercept:", np.mean(np.array(position)), "+/-", np.sqrt(np.sum(np.array(posErr)**2))/len(posErr))
+                
+                # summary plot
+                
             output_dict["h0_hits"] = hTracker
             
-            findWireIntersections(output_dict, layer, channel)
+            #findWireIntersections(output_dict, layer, channel)
             
-            with open("measures_20240307.json", "w") as outfile: 
+            with open("../measures_20240328_run350_533.json", "w") as outfile: 
                 json.dump(output_dict, outfile)
