@@ -148,9 +148,12 @@ class TrackPosition:
         hit_y = self.projectedY - np.mean(self.projectedY)
         hits_pos = np.array([hit_x, hit_y])
         _pca = PCA(n_components = 2).fit(np.transpose(hits_pos))
+        #_var = _pca.get_covariance()
+        #print(_cov)
+        self.cov1 = np.array([_pca.get_covariance()[0][0], _pca.get_covariance()[0][1]])
         self.comp1 = np.array([_pca.components_[0][0], _pca.components_[0][1]])
         self.comp2 = np.array([_pca.components_[1][0], _pca.components_[1][1]])
-        weight1, weight2 = _pca.explained_variance_[0], _pca.explained_variance_[1]
+        #weight1, weight2 = _pca.explained_variance_[0], _pca.explained_variance_[1]
         self.pca_angle = np.arccos(np.dot(self.comp1, np.array([1,0]))/(norm(self.comp1)))*180/np.pi
         if (self.pca_angle>90):
             self.pca_angle-=180
@@ -181,11 +184,17 @@ class TrackPosition:
         # exclude bad points from fit
         xFitRange = x[((x > x0-lim)&(x < x0+lim))&(self.sigmaAngle>0.4)]
         sigmaFitRange = self.sigmaAngle[((x > x0-lim)&(x < x0+lim))&(self.sigmaAngle>0.4)]
-        sigmaFit = np.polyfit(xFitRange, sigmaFitRange, 2)
-        sigmaCurve = np.poly1d(sigmaFit)
-        self.minH = xFitRange[np.array(sigmaCurve(xFitRange)) == np.min(np.array(sigmaCurve(xFitRange)))][0]
-        self.minSigma = np.min(np.array(sigmaCurve(xFitRange)))
-        self.minAngle = self.WireAngle[np.array(sigmaCurve(x)) == np.min(np.array(sigmaCurve(x)))][0]
+        sigmaFit = np.polyfit(xFitRange, sigmaFitRange, 2, cov=True)
+        par_sigma = sigmaFit[0]
+        var_sigma = np.diag(sigmaFit[1])
+        sigmaCurve = np.poly1d(par_sigma)
+        #self.minH = xFitRange[np.array(sigmaCurve(xFitRange)) == np.min(np.array(sigmaCurve(xFitRange)))][0]
+        minh = -par_sigma[1]/(2*par_sigma[0])
+        index = (np.abs(x - minh)).argmin()
+        self.minH =  x[index]
+        self.minH_err = minh*0.5*( np.sqrt(var_sigma[0])/par_sigma[0] + np.sqrt(var_sigma[1])/par_sigma[1])
+        self.minSigma = sigmaCurve(self.minH) #np.min(np.array(sigmaCurve(xFitRange)))
+        self.minAngle = self.WireAngle[x == self.minH][0]
         if plot:
             fig, ax1 = plt.subplots()
             ax1.plot(x, self.sigmaAngle, '.')

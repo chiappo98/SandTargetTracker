@@ -3,7 +3,7 @@ import numpy as np
 import argparse
 import json
 from scipy.optimize import curve_fit
-from hitPreprocessing import TimeDistance, Waveforms, Distance
+from hitPreprocessing import TimeDistance, Waveforms
 
 
 def findTime_Distance(hitFile, measureDict, channel, layer, plot=False):
@@ -112,7 +112,7 @@ if __name__ == "__main__":
     
     channel = [["dc0", "dc3", "dc0_1", "dc3_1"], ["dc1", "dc4", "dc1_1", "dc4_1"], ["dc2", "dc5", "dc2_1", "dc5_1"]] 
     layer = ["layer_1","layer_2","layer_3"]
-    with open(args.measureFile) as f:
+    with open('../'+args.measureFile) as f:
         measureDict = json.load(f)
     if args.method == "all_channels":
         t_arr, d_arr, entry_arr = np.empty(0), np.empty(0), np.empty(0)

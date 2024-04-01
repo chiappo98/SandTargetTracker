@@ -2,6 +2,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 import argparse
 import json
+from scipy.optimize import curve_fit
 from hitPreprocessing import TrackPosition
 
 def compute_distance(dot_x, dot_y, line_x, line_y):
@@ -105,7 +106,7 @@ def findXYZ(hitFile, coordinateFile, channel, plane, plotZSigma=False, plotProfi
     if plotProfile:
         tracks.rotate(tracks.minAngle)
         tracks.fit_profile(True)
-    return hTracker, [tracks.minH, tracks.pca_angle, minPosition, minCentroid, tracks.minSigma]
+    return hTracker, [tracks.minH, tracks.minH_err, tracks.pca_angle, minPosition, minCentroid, tracks.minSigma]
 
 def line_intersection(x_i, x_f, y_i, y_f):
     """find intersections between two lines
@@ -182,6 +183,10 @@ def compute_geometry(layer):
     
     return 0
 
+def linearFunc(x,intercept):
+    return intercept
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('rootFile', type=str, help='.root file with hits')
@@ -224,25 +229,45 @@ if __name__ == "__main__":
             layer = ["layer_1","layer_2","layer_3"]
             coord = ["height", "theta", "intercept", "centroid", "sigmaAngle"]
             output_dict = {}
+            wire_id = np.array([1,2,3,4])
+            colors = ['r', 'g', 'b']
+            fh, hAx = plt.subplots()
+            fa, aAx = plt.subplots()
             for l in range(0,3):
                 layer_dict = {}
-                h, angle, position, posErr= [], [], [], []
+                h, herr, angle, position, posErr= [], [], [], [], []
                 print(layer[l])
                 for ch in channel[l]:
                     hTracker, values = findXYZ(args.rootFile, args.coordFile, ch, plane[l], plotZSigma=False, plotProfile=False)
                     layer_dict[ch] = dict(zip(coord, values))
-                    print(ch, values[0]+hTracker, values[1:])
+                    print(ch, values[0]+hTracker, values[2:])
                     h.append(values[0])
-                    angle.append(values[1])
+                    herr.append(values[1])
+                    angle.append(values[2])
                 output_dict[layer[l]] = layer_dict
                 print("height:", np.mean(np.array(h)), '+/-',np.std(np.array(h)))
                 print("angle:", np.mean(np.array(angle)), '+/-',np.std(np.array(angle)))
                 
                 # summary plot
-                
+                hAx.errorbar(wire_id, h, np.abs(np.array(herr)), fmt="." ,color=colors[l])
+                aAx.errorbar(wire_id, angle, [0.3,0.3,0.3,0.3], fmt=".", color=colors[l])   # still don't know how to compute pca errors 
+                #fit data points
+                h_fit, h_cov=curve_fit(linearFunc,wire_id,h,) #sigma=herr
+                a_fit, a_cov=curve_fit(linearFunc,wire_id,angle)  #,sigma=[0.1,0.1,0.1,0.1]
+                print(np.sqrt(h_cov[0][0]))
+                print(np.sqrt(a_cov[0][0]))
+                hAx.axhline(h_fit[0] ,color=colors[l], linestyle='-', label='{:.2f}'.format(h_fit[0])+'+/-'+'{:.2f}'.format(np.sqrt(h_cov[0][0])))
+                aAx.axhline(a_fit[0] ,color=colors[l], linestyle='-', label='{:.2f}'.format(a_fit[0])+'+/-'+'{:.2f}'.format(np.sqrt(a_cov[0][0])))
+            hAx.set_ylabel("vertical position (cm)")
+            aAx.set_ylabel("angle (°)")
+            hAx.set_xlabel("wire ID")
+            aAx.set_xlabel("wire ID")
+            hAx.legend()
+            aAx.legend()
+            plt.show()
             output_dict["h0_hits"] = hTracker
             
             #findWireIntersections(output_dict, layer, channel)
             
-            with open("../measures_20240328_run350_533.json", "w") as outfile: 
+            with open("../measures_20240328.json", "w") as outfile: 
                 json.dump(output_dict, outfile)
