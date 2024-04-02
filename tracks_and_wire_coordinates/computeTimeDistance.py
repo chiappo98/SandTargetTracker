@@ -6,17 +6,18 @@ from scipy.optimize import curve_fit
 from hitPreprocessing import TimeDistance, Waveforms
 
 
-def findTime_Distance(hitFile, measureDict, channel, layer, plot=False):
+def findTime_Distance(trackFile, timeFile, measureDict, channel, layer, plot=False):
     """plot time-distance relation
     Args:
-        hitFile: root file with hits
+        trackFile: root file with tracks from tracker
+        timeFile: root file with time stamps
         measureDict: dictionary with computed wire parameters
         channel: digitizer channel
         layer: wire layer
     """
-    td = TimeDistance(hitFile, channel, 0.02e-9) 
+    td = TimeDistance(trackFile, timeFile, channel, 0.02e-9) 
     td.import2RDF()
-    Z = measureDict[layer][channel+"_c"]["height"]
+    Z = measureDict[layer][channel+"_c"]["height"][0]
     theta = measureDict[layer][channel+"_c"]["theta"]
     centroid = measureDict[layer][channel+"_c"]["centroid"]
     Wpoint = np.array([centroid[0], centroid[1], 0])
@@ -84,17 +85,18 @@ def fit_td(split_td, plot=False):
         plt.legend()
         plt.colorbar()
         plt.show()   
-        return 0
+    return ppar, mean_td
     
 def plot_td_fit(d, t, plot = False):
     sort_idx = np.argsort(d)
     split_steps = []
-    for v in np.arange(2.5/20, 2.5, 2.5/20):
+    for v in np.arange(np.max(d)/40, np.max(d), np.max(d)/40):
         split_steps.append(np.where(d[sort_idx]<v)[0][-1])
     split_td = np.array_split(np.vstack((d[sort_idx],t[sort_idx])), np.array(split_steps), axis=1)
-    plot_sliced_distribution(split_td)
-    fit_td(split_td, plot=True)
-    return 0
+    if plot:
+        plot_sliced_distribution(split_td)
+    fitPar, mean = fit_td(split_td, plot)
+    return fitPar, mean
 
 def plotWF(channel, entries):
     w = Waveforms(channel) 
@@ -104,7 +106,8 @@ def plotWF(channel, entries):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('rootFile', type=str, help='.root file with hits')
+    parser.add_argument('trackFile', type=str, help='.root file with tracks')
+    parser.add_argument('timeFile', type=str, help='.root file with time stamps')
     parser.add_argument('measureFile', type=str, help='.json file with computed wire coordinates')
     parser.add_argument('method', type=str, choices=["all_channels", "dc0", "dc3", "dc0_1", "dc3_1", "dc1", "dc4", "dc1_1", "dc4_1", "dc2", "dc5", "dc2_1", "dc5_1"])
     parser.add_argument('--inspectWF', type=float, nargs='+', help='drift distance range in which inspect waveforms', default=np.nan)
@@ -115,25 +118,49 @@ if __name__ == "__main__":
     with open('../'+args.measureFile) as f:
         measureDict = json.load(f)
     if args.method == "all_channels":
-        t_arr, d_arr, entry_arr = np.empty(0), np.empty(0), np.empty(0)
         for l in range(0,3):
-            for ch in channel[l]:
-                t,d, entry = findTime_Distance(args.rootFile, measureDict, ch, layer[l], plot=False)
-                t_arr = np.append(t_arr, t)
-                d_arr = np.append(d_arr, d)
-                entry_arr = np.append(entry_arr, entry)
-        plot = False
-        if plot:
-            plt.hist2d(d_arr[np.logical_and(t_arr>0, d_arr<2.5)], t_arr[np.logical_and(t_arr>0, d_arr<2.5)], 100)
-            plt.colorbar()
-            plt.xlabel('distance (cm)')
-            plt.ylabel('time (s)')
+            t51, d51, t52, d52 = np.empty(0), np.empty(0), np.empty(0), np.empty(0)
+            fig, ax = plt.subplots(2,2)
+            for ch in channel[l][:2]:
+                t,d, entry = findTime_Distance(args.trackFile, args.timeFile, measureDict, ch, layer[l], plot=False)
+                ax[0,0].plot(np.abs(d), t, '.', markersize=1, label=ch)
+                ax[0,1].plot(d, t, '.', markersize=1, label=ch)
+                t52 = np.append(t52, t)
+                d52 = np.append(d52, np.abs(d))
+            for ch in channel[l][2:]:
+                t,d, entry = findTime_Distance(args.trackFile, args.timeFile, measureDict, ch, layer[l], plot=False)
+                ax[1,0].plot(np.abs(d), t, '.', markersize=1, label=ch)
+                ax[1,1].plot(d, t, '.', markersize=1, label=ch)
+                t51 = np.append(t51, t)
+                d51 = np.append(d51, np.abs(d))
+            fitPar52, mean52 = plot_td_fit(d52, t52, plot=False)
+            fitPar51, mean51 = plot_td_fit(d51, t51, plot=False)
+            def line(x, m, q):
+                y = m*x + q
+                return y
+            ax[0,0].plot(mean52[:,0], mean52[:,1], '.')
+            ax[0,0].plot(mean52[:,0][mean52[:,0]<2], line(mean52[:,0][mean52[:,0]<2], fitPar52[0], fitPar52[1]), '--', label=r'v=%.2F $\mu$m/ns' % (1e-5/fitPar52[0]))
+            ax[1,0].plot(mean51[:,0], mean51[:,1], '.')
+            ax[1,0].plot(mean51[:,0][mean51[:,0]<2], line(mean51[:,0][mean51[:,0]<2], fitPar51[0], fitPar51[1]), '--', label=r'v=%.2F $\mu$m/ns' % (1e-5/fitPar51[0]))
+            ax[0,0].set_xlabel('distance (cm)')
+            ax[1,0].set_xlabel('distance (cm)')
+            ax[0,1].set_xlabel('distance (cm)')
+            ax[1,1].set_xlabel('distance (cm)')
+            ax[0,0].set_ylabel('time (s)')
+            ax[0,1].set_ylabel('time (s)')
+            ax[1,0].set_ylabel('time (s)')
+            ax[1,1].set_ylabel('time (s)')
+            ax[0,0].legend(title='v1752')
+            ax[0,1].legend(title='v1752')
+            ax[1,0].legend(title='v1751')
+            ax[1,1].legend(title='v1751')
             plt.show()
+    # following part is not up to date
     if args.method != "all_channels":
         idx = np.where(np.asarray(channel) == args.method)[0][0]
         t,d, entry = findTime_Distance(args.rootFile, measureDict, args.method, layer[idx], plot=False)
         d_filt, t_filt = d[np.logical_and(t>0, d<2.5)], t[np.logical_and(t>0, d<2.5)]
-        plot_td_fit(d_filt, t_filt, plot=True)
+        fitPar = plot_td_fit(d_filt, t_filt, plot=True)
         if args.inspectWF != 0:
             selected_entries = np.array(entry)[np.logical_and(t>0, t>args.inspectWF[0], t<args.inspectWF[1])]
             plotWF(args.method, selected_entries)

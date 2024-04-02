@@ -82,8 +82,8 @@ class TrackPosition:
                                        ).AsNumpy({"x", "y", "z", "sx", "sy"})
                 leafnames = ["x", "y", "z", "sx", "sy"]
             case "new_tracks":
-                dfBranches = df.Filter(self.channel + ">" + str(self.chargeThr)).AsNumpy({"projectionX", "projectionY", "z1", "tx", "ty"}) #, "Xindex", "Yindex"
-                leafnames = ["projectionX", "projectionY", "z1", "tx", "ty"] #, "Xindex", "Yindex"
+                dfBranches = df.Filter(self.channel + ">" + str(self.chargeThr)).AsNumpy({"projectedX", "projectedY", "z1", "tx", "ty"}) #, "Xindex", "Yindex"
+                leafnames = ["projectedX", "projectedY", "z1", "tx", "ty"] #, "Xindex", "Yindex"
         self.trackList = []
         for leaf in leafnames:
             self.trackList.append([np.array(v) for v in dfBranches[leaf]])               
@@ -188,22 +188,19 @@ class TrackPosition:
         par_sigma = sigmaFit[0]
         var_sigma = np.diag(sigmaFit[1])
         sigmaCurve = np.poly1d(par_sigma)
-        #self.minH = xFitRange[np.array(sigmaCurve(xFitRange)) == np.min(np.array(sigmaCurve(xFitRange)))][0]
         minh = -par_sigma[1]/(2*par_sigma[0])
         index = (np.abs(x - minh)).argmin()
         self.minH =  x[index]
-        self.minH_err = minh*0.5*( np.sqrt(var_sigma[0])/par_sigma[0] + np.sqrt(var_sigma[1])/par_sigma[1])
-        self.minSigma = sigmaCurve(self.minH) #np.min(np.array(sigmaCurve(xFitRange)))
+        self.minH_err = minh*0.5*np.sqrt( ( var_sigma[0]/(par_sigma[0]**2) + var_sigma[1]/(par_sigma[1]**2)) )
+        self.minSigma = sigmaCurve(self.minH)
         self.minAngle = self.WireAngle[x == self.minH][0]
         if plot:
             fig, ax1 = plt.subplots()
             ax1.plot(x, self.sigmaAngle, '.')
             ax1.plot(xFitRange, sigmaCurve(xFitRange), '--')
-            #ax1.plot(x, dydx3_curve(x), '--')
             ax2 = ax1.twinx() 
             ax2.plot(x, dydx, '--')
             ax1.axvline(self.minH, color='g', linestyle='--', label=self.channel+" h="+str(self.minH))
-            # plt.xlabel('height (cm)')
             ax1.set_ylabel('sigma')
             ax1.legend()
             plt.show()    
@@ -226,19 +223,25 @@ class TrackPosition:
         plt.title(self.channel)
         
 class TimeDistance:
-    def __init__(self, _fname, _channel, _chargeThr):
+    def __init__(self, _distance_fname, _time_fname, _channel, _chargeThr):
         self.path = '/mnt/e/data/drift_chamber/'  ##MODIFY ACCORDING TO LOCAL MACHINE PATH
-        self.fname = _fname
+        self.time_fname = _time_fname
+        self.distance_fname = _distance_fname
         self.channel = _channel
         self.chargeThr = _chargeThr  
     def import2RDF(self):
-        df = ROOT.RDataFrame("tree", self.path + self.fname)
-        dfTrackBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&"+str(self.channel)+"_pp>0.015&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
-                                                                                ).AsNumpy({"entry", "x", "y", "z", "sx", "sy"})
-        dfTimeBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&"+str(self.channel)+"_pp>0.015&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
-                                                                                ).AsNumpy({str(self.channel)+"_t", "pm7_t"})
-        trackLeaf = ["x", "y", "z", "sx", "sy"]
-        TimeLeaf = [str(self.channel)+"_t", "pm7_t"]
+        t_df = ROOT.RDataFrame("tree", self.path + self.time_fname)
+        d_df = ROOT.RDataFrame("tree", self.path + self.distance_fname)
+        # dfTrackBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&"+str(self.channel)+"_pp>0.015&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
+        #                                                                         ).AsNumpy({"entry", "x", "y", "z", "sx", "sy"})
+        # dfTimeBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&"+str(self.channel)+"_pp>0.015&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
+        #                                                                         ).AsNumpy({str(self.channel)+"_t", "pm7_t"})
+        dfTrackBranches = d_df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&pm7_c>0.2e-10"
+                                                                                ).AsNumpy({"entry", "projectedX", "projectedY", "z1", "tx", "ty"})
+        dfTimeBranches = t_df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
+                                                                                ).AsNumpy({str(self.channel)+"_tf", "pm7_t"})
+        trackLeaf = ["projectedX", "projectedY", "z1", "tx", "ty"]
+        TimeLeaf = [str(self.channel)+"_tf", "pm7_t"]
         self.trackList = []
         self.TimeList = []
         self.entryList = [np.array(v) for v in dfTrackBranches["entry"]]
@@ -261,7 +264,7 @@ class TimeDistance:
         Wpoint = Wpoint.reshape(1,3)
         Tpoint = np.array([self.projectedX, self.projectedY, np.zeros((self.projectedY).size)]).T
         # NOTE: I assume z=0 for points of both wire and tracks
-        self.distance = np.abs(np.diag(np.matmul(np.cross(Wvec, Tvec),np.transpose(Tpoint-Wpoint))))
+        self.distance = np.diag(np.matmul(np.cross(Wvec, Tvec),np.transpose(Tpoint-Wpoint)))
 
 class Tracks:
     def __init__(self, _fname, _channel, _chargeThr):
@@ -325,9 +328,9 @@ class Tracks:
             ).Define(
             "double_qY", "Numba::select_col(double_fitY, 3)"
             ).Define(
-            "projectionX", "Numba::project_track(z, tx, double_qX)"
+            "projectedX", "Numba::project_track(z, tx, double_qX)"
             ).Define(
-            "projectionY", "Numba::project_track(z, ty, double_qY)"
+            "projectedY", "Numba::project_track(z, ty, double_qY)"
             ).Define(
             "Xindex", "Numba::select_col(double_fitX, 5)"
             ).Define(
@@ -335,15 +338,15 @@ class Tracks:
             ).Define(
                 "z1",  "Numba::redefine_z(z)")
         if saveRDF:
-            proj_trk.Snapshot("tree", self.path+"tracks_run350_533.root",
+            proj_trk.Snapshot("tree", self.path+"tracks_20240402_run350_1020.root",
                               {"entry", "dc0_c", "dc3_c", "dc0_1_c", "dc3_1_c", 
                                "dc1_c", "dc4_c", "dc1_1_c", "dc4_1_c", 
-                               "dc2_c", "dc5_c", "dc2_1_c", "dc5_1_c",
-                               "x", "y", "z1", "tx", "ty", "projectionX", "projectionY"});    
+                               "dc2_c", "dc5_c", "dc2_1_c", "dc5_1_c", "pm7_c",
+                               "x", "y", "z1", "tx", "ty", "projectedX", "projectedY"});    
         if plot_xy:
-            proj_trk1 = proj_trk.Filter(index_filter).AsNumpy({"projectionX", "projectionY", "tx", "ty", "x", "y", "sx", "sy"})
-            proj_x = [np.array(v) for v in proj_trk1["projectionX"]]
-            proj_y = [np.array(v) for v in proj_trk1["projectionY"]]
+            proj_trk1 = proj_trk.Filter(index_filter).AsNumpy({"projectedX", "projectedY", "tx", "ty", "x", "y", "sx", "sy"})
+            proj_x = [np.array(v) for v in proj_trk1["projectedX"]]
+            proj_y = [np.array(v) for v in proj_trk1["projectedY"]]
             tan_x = [np.array(v) for v in proj_trk1["tx"]]
             tan_y = [np.array(v) for v in proj_trk1["ty"]]
             x = [np.array(v) for v in proj_trk1["x"]]
