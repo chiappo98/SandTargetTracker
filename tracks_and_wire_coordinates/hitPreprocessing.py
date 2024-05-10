@@ -82,8 +82,8 @@ class TrackPosition:
                                        ).AsNumpy({"x", "y", "z", "sx", "sy"})
                 leafnames = ["x", "y", "z", "sx", "sy"]
             case "new_tracks":
-                dfBranches = df.Filter(self.channel + ">" + str(self.chargeThr)).AsNumpy({"projectedX", "projectedY", "z1", "tx", "ty"}) #, "Xindex", "Yindex"
-                leafnames = ["projectedX", "projectedY", "z1", "tx", "ty"] #, "Xindex", "Yindex"
+                dfBranches = df.Filter(self.channel + ">" + str(self.chargeThr)).AsNumpy({"newX", "newY", "z1", "tx", "ty"}) #, "Xindex", "Yindex"
+                leafnames = ["newX", "newY", "z1", "tx", "ty"] #, "Xindex", "Yindex"
         self.trackList = []
         for leaf in leafnames:
             self.trackList.append([np.array(v) for v in dfBranches[leaf]])               
@@ -101,13 +101,13 @@ class TrackPosition:
         """Project hits at a certain heght wrt the one encoded in Branch 'z'.
         Args: height
         """
-        self.projectedX = np.array(self.trackList[0]) + height*np.array(self.trackList[3])
-        self.projectedY = np.array(self.trackList[1]) + height*np.array(self.trackList[4])
+        self.newX = np.array(self.trackList[0]) + height*np.array(self.trackList[3])
+        self.newY = np.array(self.trackList[1]) + height*np.array(self.trackList[4])
     def rotate(self, angle):
         """rotate all the hits wrt the origin of tracker SdR
         Args: angle
         """
-        x, y = self.projectedX, self.projectedY
+        x, y = self.newX, self.newY
         cord = np.transpose(np.dstack((x,y)).reshape(-1,2))
         angle = angle * np.pi/180
         R = [[np.cos(angle), np.sin(angle)],[-np.sin(angle),np.cos(angle)]]
@@ -144,8 +144,8 @@ class TrackPosition:
             plt.show()
     def pca(self, plot=False):
         """perform pca"""
-        hit_x = self.projectedX - np.mean(self.projectedX)
-        hit_y = self.projectedY - np.mean(self.projectedY)
+        hit_x = self.newX - np.mean(self.newX)
+        hit_y = self.newY - np.mean(self.newY)
         hits_pos = np.array([hit_x, hit_y])
         _pca = PCA(n_components = 2).fit(np.transpose(hits_pos))
         #_var = _pca.get_covariance()
@@ -159,7 +159,7 @@ class TrackPosition:
             self.pca_angle-=180
         if (((_pca.components_[0][0]>0)&(_pca.components_[0][1]<0))|((_pca.components_[0][0]<0)&(_pca.components_[0][1]<0))):
             self.pca_angle = -self.pca_angle
-        self.centroid = np.array([np.mean(self.projectedX), np.mean(self.projectedY)])
+        self.centroid = np.array([np.mean(self.newX), np.mean(self.newY)])
         if plot:
             plt.plot(hits_pos[0,:], hits_pos[1,:], '.', markersize=2)
             for i, (comp, var) in enumerate(zip(_pca.components_, _pca.explained_variance_)):
@@ -209,13 +209,13 @@ class TrackPosition:
             case "original":
                 plt.plot(self.trackList[0], self.trackList[1], '.', markersize=2, label='original')
             case "projected":
-                plt.plot(self.projectedX, self.projectedY, '.', markersize=2, label='projected')
+                plt.plot(self.newX, self.newY, '.', markersize=2, label='projected')
             case "rotated":
                 plt.plot(self.rotated_x, self.rotated_y, '.', markersize=2, label='rotated')
             case "wireFit":
                 xline = np.linspace(0,40,40)*np.cos(self.minAngle* np.pi/180)
                 yline = float(self.pyPar_at_Theta[1]) + np.linspace(0,40,40)*np.sin(self.minAngle* np.pi/180)
-                plt.plot(self.projectedX, self.projectedY, '.', markersize=2)
+                plt.plot(self.newX, self.newY, '.', markersize=2)
                 plt.plot(xline, yline, '--', label=r': $\theta$='+ '{:.3f}'.format(self.minAngle)+r'° , $\sigma$='+ '{:.2f}'.format(self.pyPar_at_Theta[2]))
                 plt.plot(self.centroid[0], self.centroid[1], 'o')
         plt.xlabel('x (cm)')
@@ -223,25 +223,23 @@ class TrackPosition:
         plt.title(self.channel)
         
 class TimeDistance:
-    def __init__(self, _distance_fname, _time_fname, _channel, _chargeThr):
+    def __init__(self, _fname, _channel, _tan_thr):
         self.path = '/mnt/e/data/drift_chamber/'  ##MODIFY ACCORDING TO LOCAL MACHINE PATH
-        self.time_fname = _time_fname
-        self.distance_fname = _distance_fname
-        self.channel = _channel
-        self.chargeThr = _chargeThr  
+        self.fname = _fname
+        self.channel = _channel 
+        self.tan_thr1 = _tan_thr[0]
+        self.tan_thr2 = _tan_thr[1]
     def import2RDF(self):
-        t_df = ROOT.RDataFrame("tree", self.path + self.time_fname)
-        d_df = ROOT.RDataFrame("tree", self.path + self.distance_fname)
-        # dfTrackBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&"+str(self.channel)+"_pp>0.015&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
-        #                                                                         ).AsNumpy({"entry", "x", "y", "z", "sx", "sy"})
-        # dfTimeBranches = df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&"+str(self.channel)+"_pp>0.015&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
-        #                                                                         ).AsNumpy({str(self.channel)+"_t", "pm7_t"})
-        dfTrackBranches = d_df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&pm7_c>0.2e-10"
-                                                                                ).AsNumpy({"entry", "projectedX", "projectedY", "z1", "tx", "ty"})
-        dfTimeBranches = t_df.Filter(self.channel + "_c>" + str(self.chargeThr)+"&&pm7_c>0.2e-10&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
-                                                                                ).AsNumpy({str(self.channel)+"_tf", "pm7_t"})
-        trackLeaf = ["projectedX", "projectedY", "z1", "tx", "ty"]
-        TimeLeaf = [str(self.channel)+"_tf", "pm7_t"]
+        df = ROOT.RDataFrame("tree", self.path + self.fname)
+        channels = np.array( [["dc0", "dc3", "dc0_1", "dc3_1"], ["dc1", "dc4", "dc1_1", "dc4_1"], ["dc2", "dc5", "dc2_1", "dc5_1"]] )
+        idx = np.where(channels==(self.channel))[1][0]
+        excluded_ch = channels[(channels!=channels[0,idx])&(channels!=channels[1,idx])&(channels!=channels[2,idx])]
+        excluded_str = "_cf<20e-12&&".join((excluded_ch).tolist())
+        df_filt = df.Filter(self.channel + "_cf>20e-12&&pm7_c>10e-12&&ty>"+str(self.tan_thr1)+"&&ty<"+str(self.tan_thr2)+"&&"+excluded_str+'_cf<20e-12')     
+        dfTrackBranches = df_filt.AsNumpy({"entry", "newX", "newY", "z1", "tx", "ty"}) #{"entry", "x", "y", "z", "sx", "sy"})
+        dfTimeBranches = df_filt.AsNumpy({str(self.channel)+"_tf", "pm7_t"}) #tf
+        trackLeaf =  ["newX", "newY", "z1", "tx", "ty"] #"x", "y", "z", "sx", "sy"
+        TimeLeaf = [str(self.channel)+"_tf", "pm7_t"] #tf
         self.trackList = []
         self.TimeList = []
         self.entryList = [np.array(v) for v in dfTrackBranches["entry"]]
@@ -250,8 +248,8 @@ class TimeDistance:
         for leaf in TimeLeaf:
             self.TimeList.append([np.array(v) for v in dfTimeBranches[leaf]])
     def projectToWplane(self, height = 0):
-        self.projectedX = np.array(self.trackList[0]) + height*np.array(self.trackList[3])
-        self.projectedY = np.array(self.trackList[1]) + height*np.array(self.trackList[4])
+        self.projX = np.array(self.trackList[0]) + height*np.array(self.trackList[3])
+        self.projY = np.array(self.trackList[1]) + height*np.array(self.trackList[4])
     def compute_distance3D(self, Wpoint, Wangle):  
         """compute distance using track and wire equations
         Args:
@@ -259,12 +257,50 @@ class TimeDistance:
             Wangle: wire angle (deg)
         """
         tanX, tanY = np.array(self.trackList[3]), np.array(self.trackList[4])
-        Wvec = np.transpose(np.array([np.cos(Wangle*np.pi/180), np.sin(Wangle*np.pi/180), 0]).reshape(3,1) *np.ones((1, tanX.size)) )
-        Tvec = np.transpose(np.array([tanX, tanY, np.ones(tanX.size)]))
-        Wpoint = Wpoint.reshape(1,3)
-        Tpoint = np.array([self.projectedX, self.projectedY, np.zeros((self.projectedY).size)]).T
+        Wvec = (np.array([np.cos(Wangle*np.pi/180), np.sin(Wangle*np.pi/180), 0]).reshape(3,1) *np.ones((1, tanX.size)) ).T
+        Tvec = (np.array([tanX, tanY, np.ones(tanX.size)])).T
+        Wpoint = Wpoint.reshape(1,3).T
+        Tpoint = np.array([self.projX, self.projY, np.zeros((self.projX).size)])
         # NOTE: I assume z=0 for points of both wire and tracks
-        self.distance = np.diag(np.matmul(np.cross(Wvec, Tvec),np.transpose(Tpoint-Wpoint)))
+        # Filter: keep only tracks inside the cell
+        top_position = Tpoint + 0.5*Tvec.T
+        bottom_position = Tpoint - 0.5*Tvec.T
+        def wire_y(x):
+            return np.tan(Wangle*np.pi/180) * (x - Wpoint[0]) + Wpoint[1]
+        cell_filter = ((top_position[1,:] < (wire_y(top_position[0,:])+1)) & (top_position[1,:] > (wire_y(top_position[0,:])-1))) & ((bottom_position[1,:] < (wire_y(bottom_position[0,:])+1)) & (bottom_position[1,:] > (wire_y(bottom_position[0,:])-1)))
+        # Compute 3D distance
+        direction3d = np.cross(Wvec, Tvec).T
+        direction3d/=np.linalg.norm(direction3d, axis=0)
+        self.distance = np.abs(np.diag(np.matmul((Tpoint-Wpoint).T, direction3d)))[cell_filter]
+        # Compute 2D distance
+        a = 1
+        b = -1/np.tan(Wangle*np.pi/180)
+        c = (Wpoint[1]/np.tan(Wangle*np.pi/180)) - Wpoint[0]
+        self.distance2D = ((a*Tpoint[0] + b*Tpoint[1] + c) / np.sqrt( a**2 + b**2))[cell_filter]
+        self.TimeList[0] = np.array(self.TimeList[0])[cell_filter]
+        self.TimeList[1] = np.array(self.TimeList[1])[cell_filter]
+        
+        self.ty = np.array(self.trackList[4])[cell_filter]
+        
+    def time_calibration(self, time_delay):
+        def t0_func(t, t0, t1, a, b, c, d):
+            y = a + b*(np.exp(-d*(t-t1))/(1+np.exp(-(t-t0)/c)))
+            return y
+        t0 = np.array(self.TimeList[0])
+        t1 = np.array(self.TimeList[1]) 
+        dt = t0-t1-time_delay
+        plt.figure()
+        n, bins, patches = plt.hist(dt[(dt>-0.1e-7)&(dt<1.3e-7)], 100)
+        bin_to_fit = (bins[:-1] + (bins[1]-bins[0])/2)
+        ppar, pcov = curve_fit(t0_func, bin_to_fit[bin_to_fit<0.8e-7], n[bin_to_fit<0.8e-7], bounds=([-2e-8, -1e-7, 0, 0, 0, 1e6],[0.5e-7, 1e-7, 3, 2e3, 5e-9, 12e6]), maxfev=5000)
+        plt.plot(bin_to_fit[bin_to_fit<0.8e-7], t0_func(bin_to_fit[bin_to_fit<0.8e-7], *ppar))
+        plt.plot(ppar[0], t0_func(ppar[0], *ppar), '*')
+        plt.title(self.channel)
+        # plt.show()
+        plt.close()
+
+        self.DeltaT = dt-ppar[0]
+        
 
 class Tracks:
     def __init__(self, _fname, _channel, _chargeThr):
@@ -272,7 +308,6 @@ class Tracks:
         self.fname = _fname
         self.channel = _channel
         self.chargeThr = _chargeThr  
-
     def import2RDF(self, method):
         df = ROOT.RDataFrame("tree", self.path + self.fname)
         cluster_filter = self.channel + "_c>" + str(self.chargeThr)+"&&nTracksXZ==1&&nTracksYZ==1&&nClustersY==5&&nClustersX==5"
@@ -328,9 +363,9 @@ class Tracks:
             ).Define(
             "double_qY", "Numba::select_col(double_fitY, 3)"
             ).Define(
-            "projectedX", "Numba::project_track(z, tx, double_qX)"
+            "newX", "Numba::project_track(z, tx, double_qX)"
             ).Define(
-            "projectedY", "Numba::project_track(z, ty, double_qY)"
+            "newY", "Numba::project_track(z, ty, double_qY)"
             ).Define(
             "Xindex", "Numba::select_col(double_fitX, 5)"
             ).Define(
@@ -338,15 +373,18 @@ class Tracks:
             ).Define(
                 "z1",  "Numba::redefine_z(z)")
         if saveRDF:
-            proj_trk.Snapshot("tree", self.path+"tracks_20240402_run350_1020.root",
-                              {"entry", "dc0_c", "dc3_c", "dc0_1_c", "dc3_1_c", 
-                               "dc1_c", "dc4_c", "dc1_1_c", "dc4_1_c", 
-                               "dc2_c", "dc5_c", "dc2_1_c", "dc5_1_c", "pm7_c",
-                               "x", "y", "z1", "tx", "ty", "projectedX", "projectedY"});    
+            proj_trk.Snapshot("tree", self.path+"tracks_20240501_STT_run2024_2365.root",
+                              {"entry", "dc0_cf", "dc3_cf", "dc0_1_cf", "dc3_1_cf", 
+                               "dc1_cf", "dc4_cf", "dc1_1_cf", "dc4_1_cf", 
+                               "dc2_cf", "dc5_cf", "dc2_1_cf", "dc5_1_cf", "pm7_c",
+                               "dc0_tf", "dc3_tf", "dc0_1_tf", "dc3_1_tf", 
+                               "dc1_tf", "dc4_tf", "dc1_1_tf", "dc4_1_tf", 
+                               "dc2_tf", "dc5_tf", "dc2_1_tf", "dc5_1_tf", "pm7_t",
+                               "x", "y", "z1", "tx", "ty", "newX", "newY"});    
         if plot_xy:
-            proj_trk1 = proj_trk.Filter(index_filter).AsNumpy({"projectedX", "projectedY", "tx", "ty", "x", "y", "sx", "sy"})
-            proj_x = [np.array(v) for v in proj_trk1["projectedX"]]
-            proj_y = [np.array(v) for v in proj_trk1["projectedY"]]
+            proj_trk1 = proj_trk.Filter(index_filter).AsNumpy({"newX", "newY", "tx", "ty", "x", "y", "sx", "sy"})
+            proj_x = [np.array(v) for v in proj_trk1["newX"]]
+            proj_y = [np.array(v) for v in proj_trk1["newY"]]
             tan_x = [np.array(v) for v in proj_trk1["tx"]]
             tan_y = [np.array(v) for v in proj_trk1["ty"]]
             x = [np.array(v) for v in proj_trk1["x"]]
